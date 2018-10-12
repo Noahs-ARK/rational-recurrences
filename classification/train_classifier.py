@@ -129,6 +129,16 @@ def get_regularization_term(model, args):
     return l2_norm.sum(dim=0)
     
 
+def reg_debug(model, args):
+    embed_dim = model.emb_layer.n_d
+    num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+    model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa).norm(2, dim=2)
+    reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+    l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
+    print(l2_norm)
+    import pdb; pdb.set_trace()
+
+
 
 def train_model(epoch, model, optimizer,
                 train_x, train_y, valid_x, valid_y,
@@ -141,7 +151,8 @@ def train_model(epoch, model, optimizer,
     criterion = nn.CrossEntropyLoss()
     cnt = 0
     stop = False
-    
+
+
     import time
     for x, y in zip(train_x, train_y):
         iter_start_time = time.time()
@@ -155,18 +166,21 @@ def train_model(epoch, model, optimizer,
         output = model(x)
         loss = criterion(output, y)
         
-
-
         regularization_term = get_regularization_term(model, args)
+        reg_debug(model, args)
         reg_loss = loss + args.reg_strength * regularization_term
-
+        
         reg_loss.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip_grad)
 
+
         optimizer.step()
-        print("took {} seconds".format(round(time.time() - iter_start_time,2)))
+        if cnt % 100 == 0:
+            import pdb; pdb.set_trace()
+        print("took {} seconds. reg_term: {}, reg_loss: {}".format(round(time.time() - iter_start_time,2), round(float(regularization_term),4), round(float(reg_loss),4)))
     
     import pdb; pdb.set_trace()
+    print("GO THROUGH THE TENSOR TO SEE IF GROUPS ARE ZERO")
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
 
@@ -332,7 +346,7 @@ if __name__ == "__main__":
     argparser.add_argument("--lr_patience", type=int, default=10)
     argparser.add_argument("--weight_decay", type=float, default=1e-6)
     argparser.add_argument("--clip_grad", type=float, default=5)
-    argparser.add_argument("--reg_strength", type=float, default=1e-4)
+    argparser.add_argument("--reg_strength", type=float, default=1e-3)
 
     args = argparser.parse_args()
     print(args)

@@ -1,0 +1,1 @@
+nice -n 19 python train_classifier.py --path /m-pinotHD/zinhome/data/text_cat/formatted_for_rational_recurrence/amazon_debug --embedding /m-pinotHD/zinhome/data/text_cat/formatted_for_rational_recurrence/amazon_debug/embedding --depth 1

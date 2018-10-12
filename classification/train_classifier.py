@@ -29,15 +29,16 @@ class Model(nn.Module):
             use_selu = 1
         else:
             assert args.activation == "none"
+
         if args.model == "lstm":
             self.encoder = nn.LSTM(
                 emb_layer.n_d,
-                args.d,
+                args.d_out,
                 args.depth,
                 dropout=args.dropout,
                 bidirectional=False
             )
-            d_out = args.d
+            d_out = args.d_out
         elif args.model == "rrnn":
             if args.semiring == "plus_times":
                 self.semiring = PlusTimesSemiring
@@ -51,7 +52,7 @@ class Model(nn.Module):
             self.encoder = rrnn.RRNN(
                 self.semiring,
                 emb_layer.n_d,
-                args.d,
+                args.d_out,
                 args.depth,
                 dropout=args.dropout,
                 rnn_dropout=args.rnn_dropout,
@@ -62,7 +63,7 @@ class Model(nn.Module):
                 layer_norm=args.use_layer_norm,
                 use_output_gate=args.use_output_gate
             )
-            d_out = args.d
+            d_out = args.d_out
         else:
             assert False
         self.out = nn.Linear(d_out, nclasses)
@@ -117,6 +118,17 @@ def eval_model(niter, model, valid_x, valid_y):
     model.train()
     return 1.0 - correct / cnt
 
+# this computes the group lasso penalty term
+def get_regularization_term(model, args):
+    embed_dim = model.emb_layer.n_d
+    num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+    model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa).norm(2, dim=2)
+    reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+    l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
+    
+    return l2_norm.sum(dim=0)
+    
+
 
 def train_model(epoch, model, optimizer,
                 train_x, train_y, valid_x, valid_y,
@@ -129,7 +141,10 @@ def train_model(epoch, model, optimizer,
     criterion = nn.CrossEntropyLoss()
     cnt = 0
     stop = False
+    
+    import time
     for x, y in zip(train_x, train_y):
+        iter_start_time = time.time()
         niter += 1
         cnt += 1
         model.zero_grad()
@@ -139,11 +154,19 @@ def train_model(epoch, model, optimizer,
         x = (x)
         output = model(x)
         loss = criterion(output, y)
-        loss.backward()
+        
+
+
+        regularization_term = get_regularization_term(model, args)
+        reg_loss = loss + args.reg_strength * regularization_term
+
+        reg_loss.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip_grad)
 
         optimizer.step()
-
+        print("took {} seconds".format(round(time.time() - iter_start_time,2)))
+    
+    import pdb; pdb.set_trace()
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
 
@@ -151,7 +174,7 @@ def train_model(epoch, model, optimizer,
     sys.stdout.write("| Epoch={} | iter={} | lr={:.6f} | train_loss={:.6f} | valid_err={:.6f} |\n".format(
         epoch, niter,
         optimizer.param_groups[0]["lr"],
-        loss.data[0],
+        reg_loss.data[0],
         valid_err
     ))
     sys.stdout.write("-" * 89 + "\n")
@@ -179,7 +202,7 @@ def main(args):
 
     embs = dataloader.load_embedding(args.embedding)
     emb_layer = modules.EmbeddingLayer(
-        args.d, data,
+        data,
         fix_emb=args.fix_embedding,
         sos=SOS,
         eos=EOS,
@@ -293,7 +316,7 @@ if __name__ == "__main__":
                            help="if using pretrained embeddings, fix them or not during training")
     argparser.add_argument("--batch_size", "--batch", type=int, default=32)
     argparser.add_argument("--max_epoch", type=int, default=100)
-    argparser.add_argument("--d", type=int, default=256)
+    argparser.add_argument("--d_out", type=int, default=256)
     argparser.add_argument("--dropout", type=float, default=0.2,
                            help="dropout intra RNN layers")
     argparser.add_argument("--embed_dropout", type=float, default=0.2,
@@ -309,6 +332,7 @@ if __name__ == "__main__":
     argparser.add_argument("--lr_patience", type=int, default=10)
     argparser.add_argument("--weight_decay", type=float, default=1e-6)
     argparser.add_argument("--clip_grad", type=float, default=5)
+    argparser.add_argument("--reg_strength", type=float, default=1e-4)
 
     args = argparser.parse_args()
     print(args)

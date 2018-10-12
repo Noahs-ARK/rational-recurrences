@@ -1,0 +1,3 @@
+conda create --name rational-recurrences python=3.6 pip
+source activate rational-recurrences
+pip install -r requirements.txt

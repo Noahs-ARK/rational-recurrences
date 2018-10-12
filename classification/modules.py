@@ -32,7 +32,7 @@ class CNN_Text(nn.Module):
 
 
 class EmbeddingLayer(nn.Module):
-    def __init__(self, n_d, words, embs=None, fix_emb=True, sos='<s>', eos='</s>',
+    def __init__(self, words, embs=None, fix_emb=True, sos='<s>', eos='</s>',
                  oov='<oov>', pad='<pad>', normalize=True):
         super(EmbeddingLayer, self).__init__()
         word2id = {}
@@ -41,14 +41,9 @@ class EmbeddingLayer(nn.Module):
             for word in embwords:
                 assert word not in word2id, "Duplicate words in pre-trained embeddings"
                 word2id[word] = len(word2id)
-
-            sys.stdout.write("{} pre-trained word embeddings loaded.\n".format(len(word2id)))
-            if n_d != len(embvecs[0]):
-                sys.stdout.write("[WARNING] n_d ({}) != word vector size ({}). Use {} for embeddings.\n".format(
-                    n_d, len(embvecs[0]), len(embvecs[0])
-                ))
-                n_d = len(embvecs[0])
-
+            n_d = len(embvecs[0])
+            sys.stdout.write("{} pre-trained word embeddings with dim={} loaded.\n".format(len(word2id),
+                                                                                           n_d))
         for w in deep_iter(words):
             if w not in word2id:
                 word2id[w] = len(word2id)

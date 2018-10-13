@@ -11,7 +11,7 @@ from cuda.rrnn_semiring import *
 
 class RRNN_Compute_GPU(Function):
 
-    _RRNN_PROG = Program((UTIL+RRNN+RRNN_SEMIRING).encode("utf-8"), "rrnn_prog.cu".encode())
+    _RRNN_PROG = Program(UTIL+RRNN+RRNN_SEMIRING, "rrnn_prog.cu")
     _RRNN_PTX = _RRNN_PROG.compile()
     _DEVICE2FUNC = {}
 

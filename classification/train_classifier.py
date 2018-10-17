@@ -13,6 +13,8 @@ import classification.modules as modules
 from semiring import *
 import rrnn
 
+
+
 SOS, EOS = "<s>", "</s>"
 class Model(nn.Module):
     def __init__(self, args, emb_layer, nclasses=2):
@@ -129,21 +131,45 @@ def get_regularization_term(model, args):
     return l2_norm.sum(dim=0)
     
 
-def reg_debug(model, args):
+def reg_debug(model, args, logging_file):
     embed_dim = model.emb_layer.n_d
     num_edges_in_wfsa = model.encoder.rnn_lst[0].k
     model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa).norm(2, dim=2)
     reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
     l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
-    print(l2_norm)
-    import pdb; pdb.set_trace()
+    logging_file.write(str(l2_norm))
 
 
+def init_logging(args):
+    dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/"
+    file_name = args.file_name() + ".txt"
+    
+    logging_file = open(dir_path + file_name, "w")
+
+    #import pdb; pdb.set_trace()
+
+    #fileh = logging.FileHandler(dir_path + file_name, "w")
+    #formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    #fileh.setFormatter(formatter)
+    
+    #log = logging.getLogger()  # root logger
+    #for hdlr in log.handlers[:]:  # remove all old handlers
+    #    log.removeHandler(hdlr)
+    #log.addHandler(fileh)      # set the new handler
+        
+    
+    
+    #logging.basicConfig(level=logging.DEBUG, filename=dir_path+file_name, filemode="w")
+    logging_file.write(str(args))
+    print(args)
+    print("saving in {}".format(args.file_name()))
+    return logging_file
+    
 
 def train_model(epoch, model, optimizer,
                 train_x, train_y, valid_x, valid_y,
                 test_x, test_y,
-                best_valid, test_err, unchanged, scheduler):
+                best_valid, test_err, unchanged, scheduler, logging_file):
     model.train()
     args = model.args
     N = len(train_x)
@@ -151,7 +177,6 @@ def train_model(epoch, model, optimizer,
     criterion = nn.CrossEntropyLoss()
     cnt = 0
     stop = False
-
 
     import time
     for x, y in zip(train_x, train_y):
@@ -165,35 +190,50 @@ def train_model(epoch, model, optimizer,
         x = (x)
         output = model(x)
         loss = criterion(output, y)
-        
+
+
+
         regularization_term = get_regularization_term(model, args)
-        reg_debug(model, args)
+        reg_debug(model, args, logging_file)
         reg_loss = loss + args.reg_strength * regularization_term
+
         
+        #import pdb; pdb.set_trace()
+
+            
         reg_loss.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip_grad)
 
 
         optimizer.step()
-        if cnt % 100 == 0:
+        if args.num_epochs_debug != -1 and epoch > args.num_epochs_debug:
             import pdb; pdb.set_trace()
-        print("took {} seconds. reg_term: {}, reg_loss: {}".format(round(time.time() - iter_start_time,2), round(float(regularization_term),4), round(float(reg_loss),4)))
+        logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}".format(round(time.time() - iter_start_time,2),
+                                                                   round(float(regularization_term),4), round(float(reg_loss),4)))
+    #sys.exit()
+    #import pdb; pdb.set_trace()
+    #print("GO THROUGH THE TENSOR TO SEE IF GROUPS ARE ZERO")
+
     
-    import pdb; pdb.set_trace()
-    print("GO THROUGH THE TENSOR TO SEE IF GROUPS ARE ZERO")
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
 
-    sys.stdout.write("-" * 89 + "\n")
-    sys.stdout.write("| Epoch={} | iter={} | lr={:.6f} | train_loss={:.6f} | valid_err={:.6f} |\n".format(
+    epoch_string = "\n"
+    epoch_string += "-" * 110 + "\n"
+    epoch_string += "| Epoch={} | iter={} | lr={} | reg_strength={} | train_loss={:.6f} | valid_err={:.6f} | regularized_loss={:.6f} |\n".format(
         epoch, niter,
         optimizer.param_groups[0]["lr"],
-        reg_loss.data[0],
-        valid_err
-    ))
-    sys.stdout.write("-" * 89 + "\n")
-    sys.stdout.flush()
+        args.reg_strength,
+        loss.data[0],
+        valid_err,
+        reg_loss.data[0]
+    )
+    epoch_string += "-" * 110 + "\n"
 
+    logging_file.write(epoch_string)
+    sys.stdout.write(epoch_string)
+    sys.stdout.flush()
+    
     if valid_err < best_valid:
         unchanged = 0
         best_valid = valid_err
@@ -208,8 +248,9 @@ def train_model(epoch, model, optimizer,
     return best_valid, unchanged, test_err, stop
 
 
-def main(args): 
-    np.random.seed(args.seed)
+def main(args):
+    logging_file = init_logging(args)
+    #np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     train_X, train_Y, valid_X, valid_Y, test_X, test_Y = dataloader.read_SST(args.path)
     data = train_X + valid_X + test_X
@@ -287,7 +328,7 @@ def main(args):
             valid_x, valid_y,
             test_x, test_y,
             best_valid, test_err,
-            unchanged, scheduler
+            unchanged, scheduler, logging_file
         )
 
         if stop:
@@ -297,13 +338,13 @@ def main(args):
             optimizer.param_groups[0]["lr"] *= args.lr_decay
 
 
-    sys.stdout.write("best_valid: {:.6f}\n".format(
-        best_valid
-    ))
-    sys.stdout.write("test_err: {:.6f}\n".format(
-        test_err
-    ))
+    sys.stdout.write("best_valid: {:.6f}\n".format(best_valid))
+    sys.stdout.write("test_err: {:.6f}\n".format(test_err))
     sys.stdout.flush()
+    logging_file.write("best_valid: {:.6f}\n".format(best_valid))
+    logging_file.write("test_err: {:.6f}\n".format(test_err))
+    logging_file.close()
+
 
 
 def str2bool(v):
@@ -315,7 +356,7 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
-if __name__ == "__main__":
+def parse_args():
     argparser = argparse.ArgumentParser(sys.argv[0], conflict_handler="resolve")
     argparser.add_argument("--seed", type=int, default=31415)
     argparser.add_argument("--model", type=str, default="rrnn")
@@ -346,9 +387,14 @@ if __name__ == "__main__":
     argparser.add_argument("--lr_patience", type=int, default=10)
     argparser.add_argument("--weight_decay", type=float, default=1e-6)
     argparser.add_argument("--clip_grad", type=float, default=5)
-    argparser.add_argument("--reg_strength", type=float, default=1e-3)
 
     args = argparser.parse_args()
+    return args
+
+
+    
+if __name__ == "__main__":
+    args = parse_args()
     print(args)
     sys.stdout.flush()
 

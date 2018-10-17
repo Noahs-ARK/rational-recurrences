@@ -108,6 +108,7 @@ class Model(nn.Module):
                 self.n_d,
                 self.n_d,
                 self.depth,
+                pattern=args.pattern,
                 dropout=args.dropout,
                 rnn_dropout=args.rnn_dropout,
                 use_tanh=use_tanh,
@@ -208,7 +209,10 @@ def repackage_hidden(args, hidden):
     if args.model == "lstm":
         return (Variable(hidden[0].data), Variable(hidden[1].data))
     elif args.model == "rrnn":
-        return (Variable(hidden[0].data), Variable(hidden[1].data))
+        if args.pattern == "bigram":
+            return (Variable(hidden[0].data), Variable(hidden[1].data))
+        elif args.pattern == "unigram":
+            return Variable(hidden.data)
     else:
         assert False
 
@@ -389,6 +393,7 @@ if __name__ == "__main__":
     argparser.add_argument("--seed", type=int, default=31415)
     argparser.add_argument("--model", type=str, default="rrnn")
     argparser.add_argument("--semiring", type=str, default="plus_times")
+    argparser.add_argument("--pattern", type=str, default="unigram")
     argparser.add_argument("--use_layer_norm", type=str2bool, default=False)
     argparser.add_argument("--use_output_gate", type=str2bool, default=False)
     argparser.add_argument("--activation", type=str, default="none")

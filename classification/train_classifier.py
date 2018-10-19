@@ -56,6 +56,7 @@ class Model(nn.Module):
                 emb_layer.n_d,
                 args.d_out,
                 args.depth,
+                pattern=args.pattern,
                 dropout=args.dropout,
                 rnn_dropout=args.rnn_dropout,
                 bidirectional=False,
@@ -63,7 +64,9 @@ class Model(nn.Module):
                 use_relu=use_relu,
                 use_selu=use_selu,
                 layer_norm=args.use_layer_norm,
-                use_output_gate=args.use_output_gate
+                use_output_gate=args.use_output_gate,
+                use_rho=args.use_rho,
+                use_epsilon_steps=args.use_epsilon_steps
             )
             d_out = args.d_out
         else:
@@ -156,9 +159,7 @@ def init_logging(args):
     #for hdlr in log.handlers[:]:  # remove all old handlers
     #    log.removeHandler(hdlr)
     #log.addHandler(fileh)      # set the new handler
-        
-    
-    
+            
     #logging.basicConfig(level=logging.DEBUG, filename=dir_path+file_name, filemode="w")
     logging_file.write(str(args))
     print(args)
@@ -250,7 +251,7 @@ def train_model(epoch, model, optimizer,
 
 def main(args):
     logging_file = init_logging(args)
-    #np.random.seed(args.seed)
+    np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     train_X, train_Y, valid_X, valid_Y, test_X, test_Y = dataloader.read_SST(args.path)
     data = train_X + valid_X + test_X

@@ -3,6 +3,66 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
+
+def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
+
+    def rrnn_compute_cpu(u, cs_init=None, eps=None):
+        assert eps is False, "haven't implemented epsilon steps with arbitrary n-grams"
+        bidir = 2 if bidirectional else 1
+        assert u.size(-1) == k
+        length, batch = u.size(0), u.size(1)
+
+        for i in range(len(cs_init)):
+            cs_init[i] = cs_init[i].contiguous().view(batch, bidir, d)
+
+        us = []
+        for i in range(0,int(k/2)):
+            us.append(u[..., i])
+        forgets = []
+        for i in range(int(k/2), k):
+            forgets.append(u[..., i])
+
+        cs_final = [[] for i in range(int(k/2))]
+
+        css = [Variable(u.data.new(length, batch, bidir, d)) for i in range(int(k/2))]
+
+        for di in range(bidir):
+            if di == 0:
+                time_seq = range(length)
+            else:
+                time_seq = range(length - 1, -1, -1)
+
+            cs_prev = [cs_init[i][:, di, :] for i in range(len(cs_init))]
+
+            for t in time_seq:
+                cs_t = []
+                for i in range(len(cs_prev)):
+                    first_term = cs_prev[i] * forgets[i][t, :, di, :]
+                    second_term = us[i][t, :, di, :]
+                    if i > 0:
+                        second_term = second_term * cs_prev[i-1]
+                    cs_t.append(first_term + second_term)
+
+                cs_prev = cs_t
+                
+                for i in range(len(cs_prev)):
+                    css[i][t,:,di,:] = cs_t[i]
+
+            for i in range(len(cs_prev)):
+                cs_final[i].append(cs_t[i])
+
+        for i in range(len(cs_final)):
+            cs_final[i] = torch.stack(cs_final[i], dim=1).view(batch, -1)
+        
+        return css, cs_final
+    if semiring.type == 0:
+        # plus times
+        return rrnn_compute_cpu
+    else:
+        assert False, "OTHER SEMIRINGS NOT IMPLEMENTED!"
+
+        
+
 def RRNN_Bigram_Compute_CPU(d, k, semiring, bidirectional=False):
     """CPU version of the core RRNN computation.
 
@@ -55,7 +115,7 @@ def RRNN_Bigram_Compute_CPU(d, k, semiring, bidirectional=False):
         return c1s, c2s, \
                torch.stack(c1_final, dim=1).view(batch, -1), \
                torch.stack(c2_final, dim=1).view(batch, -1)
-
+    
     def rrnn_compute_cpu(u, c1_init=None, c2_init=None, eps=None):
         bidir = 2 if bidirectional else 1
         assert u.size(-1) == k
@@ -83,7 +143,10 @@ def RRNN_Bigram_Compute_CPU(d, k, semiring, bidirectional=False):
 
             for t in time_seq:
                 c1_t = c1_prev* forget1[t, :, di, :] + u1[t, :, di, :]
-                tmp = eps[di, :] + c1_prev
+                if eps is not None:
+                    tmp = eps[di, :] + c1_prev
+                else:
+                    tmp = c1_prev
                 c2_t = c2_prev * forget2[t, :, di, :] + tmp * u2[t, :, di, :]
                 c1_prev, c2_prev = c1_t, c2_t
                 c1s[t,:,di,:], c2s[t,:,di,:]  = c1_t, c2_t
@@ -154,7 +217,9 @@ class RRNNCell(nn.Module):
                  use_selu=0,
                  weight_norm=False,
                  index=-1,
-                 use_output_gate=True):
+                 use_output_gate=True,
+                 use_rho=False,
+                 use_epsilon_steps):
         super(RRNNCell, self).__init__()
         assert (n_out % 2) == 0
         self.semiring = semiring
@@ -169,6 +234,8 @@ class RRNNCell(nn.Module):
         self.index = index
         self.activation_type = 0
         self.use_output_gate = use_output_gate  # borrowed from qrnn
+        self.use_rho = use_rho
+        self.use_epsilon_steps = use_epsilon_steps
         if use_tanh:
             self.activation_type = 1
         elif use_relu:
@@ -181,10 +248,20 @@ class RRNNCell(nn.Module):
 
         if self.pattern == "bigram":
             self.k = 5 if self.use_output_gate else 4
-            self.bias_eps = nn.Parameter(torch.Tensor(self.bidir*n_out))
-            self.bias_final = nn.Parameter(torch.Tensor(self.bidir*n_out*2))
         elif self.pattern == "unigram":
             self.k = 3 if self.use_output_gate else 2
+        else:
+            # it should be of the form "4-gram"
+            # should probably implement epsilon stuff, as in bigram
+            ngram = int(self.pattern.split("-")[0])
+            self.k = 2 * (ngram)
+
+        
+        if self.pattern != "unigram" and self.pattern != "1-gram":
+            if self.use_rho:
+                self.bias_final = nn.Parameter(torch.Tensor(self.bidir*n_out*int(self.k/2)))
+            if self.use_epsilon_steps:
+                self.bias_eps = nn.Parameter(torch.Tensor(self.bidir*n_out))
 
         self.size_per_dir = n_out*self.k
         self.weight = nn.Parameter(torch.Tensor(
@@ -203,9 +280,12 @@ class RRNNCell(nn.Module):
 
         # initialize bias
         self.bias.data.zero_()
-        if self.pattern == "bigram":
-            self.bias_eps.data.zero_()
-            self.bias_final.data.zero_()
+
+        if self.pattern != "unigram" and self.pattern != "1-gram":
+            if self.use_rho:
+                self.bias_final.data.zero_()
+            if self.use_epsilon_steps:
+                self.bias_eps.data.zero_()
 
         self.scale_x = 1
         if not rescale:
@@ -362,14 +442,17 @@ class RRNNCell(nn.Module):
 
         u[..., 0] = u_[..., 0] * (1. - u[..., 2])  # input 1
         u[..., 1] = u_[..., 1] * (1. - u[..., 3])  # input 2
-
+        
         if input.is_cuda:
-            from rrnn_gpu import RRNN_Compute_GPU
+            from rrnn_gpu import RRNN_Bigram_Compute_GPU
             RRNN_Compute = RRNN_Bigram_Compute_GPU(n_out, 4, self.semiring, self.bidirectional)
         else:
             RRNN_Compute = RRNN_Bigram_Compute_CPU(n_out, 4, self.semiring, self.bidirectional)
 
-        eps = self.bias_eps.view(bidir, n_out).sigmoid()
+        if self.use_epsilon_steps:
+            eps = self.bias_eps.view(bidir, n_out).sigmoid()
+        else:
+            eps = None
         c1s, c2s, c1_final, c2_final= RRNN_Compute(u, c1_init, c2_init, eps)
 
         rho = self.bias_final.view(bidir, n_out, 2).sigmoid()
@@ -420,6 +503,7 @@ class RRNNCell(nn.Module):
         u[..., 1] = (u_[..., 1] + forget_bias).sigmoid()   # forget
         u[..., 0] = u_[..., 0] * (1. - u[..., 1])  # input
 
+
         if input.is_cuda:
             from rrnn_gpu import RRNN_Compute_GPU
             RRNN_Compute = RRNN_Unigram_Compute_GPU(n_out, 2, self.semiring, self.bidirectional)
@@ -435,13 +519,89 @@ class RRNNCell(nn.Module):
 
         return gcs.view(length, batch, -1), c_final
 
+    def real_ngram_forward(self, input, init_hidden=None):
+        assert input.dim() == 3
+        n_in, n_out = self.n_in, self.n_out
+        length, batch = input.size(0), input.size(-2)
+        bidir = self.bidir
+
+        if init_hidden is None:
+            size = (batch, n_out * bidir)
+            cs_init = []
+            for i in range(int(self.k/2)):
+                cs_init.append(Variable(input.data.new(*size).zero_()))
+
+        else:
+            assert False, "NOT IMPLEMENTED!"
+            assert (len(init_hidden) == 2)
+            c1_init, c2_init, = init_hidden
+
+        if self.training and (self.rnn_dropout>0):
+            mask = self.get_dropout_mask_((1, batch, n_in), self.rnn_dropout)
+            x = input * mask.expand_as(input)
+        else:
+            x = input
+
+        x_2d = x if x.dim() == 2 else x.contiguous().view(-1, n_in)
+
+        weight_in = self.weight if not self.weight_norm else self.apply_weight_norm()
+        u_ = x_2d.mm(weight_in)
+        u_ = u_.view(length, batch, bidir, n_out, self.k)
+
+        # optional: output.
+        bias = self.bias.view(self.k, bidir, n_out)
+
+        u = Variable(u_.data.new(length, batch, bidir, n_out, self.k))
+
+        for i in range(int(self.k/2),self.k):
+            forget_bias = bias[i, ...]
+            u[..., i] = (u_[..., i] + forget_bias).sigmoid()   # forget 
+
+        for i in range(0, int(self.k/2)):
+            u[..., i] = u_[..., i] * (1. - u[..., i + int(self.k/2)])  # input
+
+        if input.is_cuda:
+            assert False, "THIS HASN'T BEEN IMPLEMENTED YET!"
+            from rrnn_gpu import RRNN_Ngram_Compute_GPU
+            RRNN_Compute = RRNN_Ngram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+        else:
+            RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
+
+        css, cs_final = RRNN_Compute(u, cs_init, eps=None)
+
+        # instead of using \rho to weight the sum, we can give uniform weight. this might be
+        # more interpretable, as the \rhos might counteract the regularization terms
+        if self.use_rho:
+            rho = self.bias_final.view(bidir, n_out, int(self.k/2)).sigmoid()
+            css_times_rho = []
+            for i in range(len(css)):
+                css_times_rho.append(css[i] * rho[...,i])
+
+            cs = sum(css_times_rho)
+        else:
+            cs = sum(css)    
+
+        if self.use_output_gate:
+            assert False, "THIS HASN'T BEEN IMPLEMENTED YET!"
+            gcs = self.calc_activation(output*cs)
+        else:
+            gcs = self.calc_activation(cs)
+
+        return gcs.view(length, batch, -1), cs_final
+
+    
     def forward(self, input, init_hidden=None):
+
         if self.semiring.type == 0:
             # plus times
             if self.pattern == "bigram":
                 return self.real_bigram_forward(input=input, init_hidden=init_hidden)
             elif self.pattern == "unigram":
                 return self.real_unigram_forward(input=input, init_hidden=init_hidden)
+            else:
+                # it should be of the form "4-gram"
+                return self.real_ngram_forward(input=input, init_hidden=init_hidden)
+                
         else:
             assert False, "not implemented yet."
             return self.semiring_forward(input=input, init_hidden=init_hidden)
@@ -470,7 +630,9 @@ class RRNN(nn.Module):
                  use_selu=0,
                  weight_norm=False,
                  layer_norm=False,
-                 use_output_gate=True):
+                 use_output_gate=True,
+                 use_rho=False,
+                 use_epsilon_steps=False):
         super(RRNN, self).__init__()
         assert not bidirectional
         self.semiring = semiring
@@ -506,7 +668,9 @@ class RRNN(nn.Module):
                 use_selu=use_selu,
                 weight_norm=weight_norm,
                 index=i+1,
-                use_output_gate=use_output_gate
+                use_output_gate=use_output_gate,
+                use_rho=use_rho,
+                use_epsilon_steps=use_epsilon_steps
             )
             self.rnn_lst.append(l)
             if layer_norm:
@@ -539,6 +703,7 @@ class RRNN(nn.Module):
             return prevx
 
     def bigram_forward(self, input, init_hidden=None, return_hidden=True):
+
         assert input.dim() == 3  # (len, batch, n_in)
         if init_hidden is None:
             init_hidden = [None for _ in range(self.num_layers)]
@@ -564,11 +729,48 @@ class RRNN(nn.Module):
         else:
             return prevx
 
+
+
+    def ngram_forward(self, input, ngram, init_hidden=None, return_hidden=True):
+        assert input.dim() == 3  # (len, batch, n_in)
+        if init_hidden is None:
+            init_hidden = [None for _ in range(self.num_layers)]
+        else:
+            assert False, "THIS IS NOT IMPLEMENTED, I DON'T THINK IT'S NECESSARY FOR CLASSIFICATION"
+            for c in init_hidden:
+                assert c.dim() == int(self.k/2)
+            init_hidden = [(c1.squeeze(0), c2.squeeze(0))
+                           for c1, c2 in zip(
+                    init_hidden[0].chunk(self.num_layers, 0),
+                    init_hidden[1].chunk(self.num_layers, 0)
+                )]
+            
+
+        prevx = input
+        lstcs = [[] for i in range(ngram)]
+
+        for i, rnn in enumerate(self.rnn_lst):
+            h, cs = rnn(prevx, init_hidden[i])
+            for j in range(len(cs)):
+                lstcs[j].append(cs[j])
+            prevx = self.ln_lst[i](h) if self.use_layer_norm else h
+
+        stacked_lstcs = [torch.stack(lstcs[i]) for i in range(len(lstcs))]
+            
+        if return_hidden:
+            return prevx, stacked_lstcs
+        else:
+            return prevx
+                      
     def forward(self, input, init_hidden=None, return_hidden=True):
         if self.pattern == "unigram":
             return self.unigram_forward(input, init_hidden, return_hidden)
         elif self.pattern == "bigram":
             return self.bigram_forward(input, init_hidden, return_hidden)
+        else:
+            # it should be of the form "4-gram"
+            ngram = int(self.pattern.split("-")[0])
+            return self.ngram_forward(input, ngram, init_hidden, return_hidden)
 
 
 class LayerNorm(nn.Module):

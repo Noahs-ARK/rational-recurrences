@@ -9,6 +9,8 @@ class ExperimentParams:
                  semiring = "plus_times",
                  use_layer_norm = False,
                  use_output_gate = False,
+                 use_rho = True,
+                 use_epsilon_steps = False,
                  activation = "none",
                  trainer = "adam",
                  fix_embedding = True,                            
@@ -38,6 +40,8 @@ class ExperimentParams:
         self.semiring = semiring
         self.use_layer_norm = use_layer_norm
         self.use_output_gate = use_output_gate
+        self.use_rho = use_rho
+        self.use_epsilon_steps = use_epsilon_steps
         self.activation = activation
         self.trainer = trainer
         self.fix_embedding = fix_embedding
@@ -69,13 +73,16 @@ class ExperimentParams:
         #self.trainer = "sgd"
         self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
-        self.gpu = True
+        #self.gpu = True
         #self.d_out = 2
         #self.num_epochs_debug = 10
         #self.lr=0.4856506
         #self.reg_strength=0.0000281
+        self.rnn_dropout = 0
 
-        #self.debug_run = True
+        self.debug_run = True
+        self.pattern = "1-gram"
+        self.use_rho = False
         
         base_data_dir = "/home/jessedd/data/amazon"
         if self.debug_run:

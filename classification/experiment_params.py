@@ -10,7 +10,7 @@ class ExperimentParams:
                  use_layer_norm = False,
                  use_output_gate = False,
                  use_rho = True,
-                 use_epsilon_steps = False,
+                 use_epsilon_steps = True,
                  activation = "none",
                  trainer = "adam",
                  fix_embedding = True,                            
@@ -71,9 +71,9 @@ class ExperimentParams:
 
         #self.lr = 0.4277069
         #self.trainer = "sgd"
-        self.reg_strength = 0.0005 #0.0032028
+        #self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
-        #self.gpu = True
+        self.gpu = True
         #self.d_out = 2
         #self.num_epochs_debug = 10
         #self.lr=0.4856506
@@ -81,8 +81,11 @@ class ExperimentParams:
         self.rnn_dropout = 0
 
         self.debug_run = True
-        self.pattern = "1-gram"
+        self.pattern = "4-gram"
         self.use_rho = False
+        self.use_epsilon_steps = False
+        self.batch_size = 8
+
         
         base_data_dir = "/home/jessedd/data/amazon"
         if self.debug_run:
@@ -91,8 +94,9 @@ class ExperimentParams:
         self.embedding = base_data_dir + "/embedding"
 
     def file_name(self):
-        name = "norms_{}_lr={:.7f}_regstr={:.7f}_dout={}".format(self.trainer,
-                                                                 self.lr, self.reg_strength, self.d_out)
+        name = "norms_{}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}".format(self.trainer,
+                                                                                       self.lr, self.reg_strength,
+                                                                                       self.d_out, self.rnn_dropout, self.pattern)
         if self.debug_run:
             name = "DEBUG_" + name
             

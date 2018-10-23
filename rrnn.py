@@ -7,7 +7,7 @@ from torch.autograd import Variable
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
 
     def rrnn_compute_cpu(u, cs_init=None, eps=None):
-        assert eps is False, "haven't implemented epsilon steps with arbitrary n-grams"
+        assert eps is None, "haven't implemented epsilon steps with arbitrary n-grams. Please set command line param to False."
         bidir = 2 if bidirectional else 1
         assert u.size(-1) == k
         length, batch = u.size(0), u.size(1)
@@ -219,7 +219,7 @@ class RRNNCell(nn.Module):
                  index=-1,
                  use_output_gate=True,
                  use_rho=False,
-                 use_epsilon_steps):
+                 use_epsilon_steps=True):
         super(RRNNCell, self).__init__()
         assert (n_out % 2) == 0
         self.semiring = semiring
@@ -453,10 +453,14 @@ class RRNNCell(nn.Module):
             eps = self.bias_eps.view(bidir, n_out).sigmoid()
         else:
             eps = None
+        import pdb; pdb.set_trace()
         c1s, c2s, c1_final, c2_final= RRNN_Compute(u, c1_init, c2_init, eps)
 
-        rho = self.bias_final.view(bidir, n_out, 2).sigmoid()
-        cs = c1s * rho[...,0] + c2s * rho[...,1]
+        if self.use_rho:
+            rho = self.bias_final.view(bidir, n_out, 2).sigmoid()
+            cs = c1s * rho[...,0] + c2s * rho[...,1]
+        else:
+            cs = c1s + c2s
 
         if self.use_output_gate:
             gcs = self.calc_activation(output*cs)
@@ -561,9 +565,23 @@ class RRNNCell(nn.Module):
             u[..., i] = u_[..., i] * (1. - u[..., i + int(self.k/2)])  # input
 
         if input.is_cuda:
-            assert False, "THIS HASN'T BEEN IMPLEMENTED YET!"
-            from rrnn_gpu import RRNN_Ngram_Compute_GPU
-            RRNN_Compute = RRNN_Ngram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+
+            assert self.k == 8
+            from rrnn_gpu import RRNN_4gram_Compute_GPU
+            RRNN_Compute_GPU = RRNN_4gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+            #RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
+
+            RRNN_Compute_CPU = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
+            import pdb; pdb.set_trace()
+            css_cpu, cs_final_cpu = RRNN_Compute_CPU(u, cs_init)
+            c1s, c2s, c3s, c4s, last_c1, last_c2, last_c3, last_c4 = RRNN_Compute_GPU(u, cs_init[0], cs_init[1], cs_init[2], cs_init[3])
+            css_gpu = [c1s, c2s, c3s, c4s]
+            cs_final_gpu = [last_c1, last_c2, last_c3, last_c4]
+            print(c1s)
+            #exit()
+            print(css_gpu == css_cpu)
+            exit()
+            
         else:
             RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
 
@@ -632,7 +650,7 @@ class RRNN(nn.Module):
                  layer_norm=False,
                  use_output_gate=True,
                  use_rho=False,
-                 use_epsilon_steps=False):
+                 use_epsilon_steps=True):
         super(RRNN, self).__init__()
         assert not bidirectional
         self.semiring = semiring

@@ -31,7 +31,8 @@ class ExperimentParams:
                  clip_grad=5,
                  reg_strength=0,
                  num_epochs_debug=-1,
-                 debug_run = False
+                 debug_run = False,
+                 sparsity_type=None
     ):
         self.path = path 
         self.embedding = embedding
@@ -63,6 +64,7 @@ class ExperimentParams:
         self.reg_strength = reg_strength
         self.num_epochs_debug = num_epochs_debug
         self.debug_run = debug_run
+        self.sparsity_type = sparsity_type
 
         self.current_experiment()
 
@@ -74,18 +76,21 @@ class ExperimentParams:
         #self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
         self.gpu = True
-        #self.d_out = 2
+        self.d_out = 36
+        #self.depth = 1
         #self.num_epochs_debug = 10
         #self.lr=0.4856506
-        #self.reg_strength=0.0000281
-        self.rnn_dropout = 0
+        self.reg_strength=0.001
+        #self.rnn_dropout = 0
+        #self.embed_dropout = 0
 
-        self.debug_run = True
+        #self.debug_run = True
         self.pattern = "4-gram"
         self.use_rho = False
         self.use_epsilon_steps = False
-        self.batch_size = 8
+        self.batch_size = 16
 
+        self.sparsity_type = "edges" # possible values: edges, wfsa
         
         base_data_dir = "/home/jessedd/data/amazon"
         if self.debug_run:
@@ -94,12 +99,15 @@ class ExperimentParams:
         self.embedding = base_data_dir + "/embedding"
 
     def file_name(self):
-        name = "norms_{}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}".format(self.trainer,
-                                                                                       self.lr, self.reg_strength,
-                                                                                       self.d_out, self.rnn_dropout, self.pattern)
+        name = "norms_{}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}_sparsity={}".format(self.trainer,
+                                                                                                   self.lr, self.reg_strength,
+                                                                                                   self.d_out, self.rnn_dropout, self.pattern,
+                                                                                                   self.sparsity_type)
+        if not self.gpu:
+            name = name + "_cpu"
         if self.debug_run:
             name = "DEBUG_" + name
-            
+
         return name
 
     def __str__(self):

@@ -565,27 +565,16 @@ class RRNNCell(nn.Module):
             u[..., i] = u_[..., i] * (1. - u[..., i + int(self.k/2)])  # input
 
         if input.is_cuda:
-
-            assert self.k == 8
+            assert self.k == 8, "custom cuda kernel only implemented for 4-gram models"
             from rrnn_gpu import RRNN_4gram_Compute_GPU
             RRNN_Compute_GPU = RRNN_4gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
-            #RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
-
-            RRNN_Compute_CPU = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
-            import pdb; pdb.set_trace()
-            css_cpu, cs_final_cpu = RRNN_Compute_CPU(u, cs_init)
             c1s, c2s, c3s, c4s, last_c1, last_c2, last_c3, last_c4 = RRNN_Compute_GPU(u, cs_init[0], cs_init[1], cs_init[2], cs_init[3])
-            css_gpu = [c1s, c2s, c3s, c4s]
-            cs_final_gpu = [last_c1, last_c2, last_c3, last_c4]
-            print(c1s)
-            #exit()
-            print(css_gpu == css_cpu)
-            exit()
-            
+            css = [c1s, c2s, c3s, c4s]
+            cs_final = [last_c1, last_c2, last_c3, last_c4]
         else:
             RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
+            css, cs_final = RRNN_Compute(u, cs_init, eps=None)
 
-        css, cs_final = RRNN_Compute(u, cs_init, eps=None)
 
         # instead of using \rho to weight the sum, we can give uniform weight. this might be
         # more interpretable, as the \rhos might counteract the regularization terms

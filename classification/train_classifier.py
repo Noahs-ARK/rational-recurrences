@@ -124,24 +124,31 @@ def eval_model(niter, model, valid_x, valid_y):
     return 1.0 - correct / cnt
 
 # this computes the group lasso penalty term
-def get_regularization_term(model, args):
-    embed_dim = model.emb_layer.n_d
-    num_edges_in_wfsa = model.encoder.rnn_lst[0].k
-    model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa).norm(2, dim=2)
-    reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
-    l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
-    
-    return l2_norm.sum(dim=0)
-    
+def get_regularization_groups(model, args):
+    if args.sparsity_type == "wfsa":
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+        l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
+        return l2_norm
+    elif args.sparsity_type == 'edges':
+        return model.encoder.rnn_lst[0].weight.norm(2, dim=0)
 
-def reg_debug(model, args, logging_file):
-    embed_dim = model.emb_layer.n_d
-    num_edges_in_wfsa = model.encoder.rnn_lst[0].k
-    model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa).norm(2, dim=2)
-    reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
-    l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
-    logging_file.write(str(l2_norm))
-
+def log_groups(model, args, logging_file):
+    if args.sparsity_type == "wfsa":
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+        l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
+        logging_file.write(str(l2_norm))
+        
+    elif args.sparsity_type == 'edges':
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+        logging_file.write(str(reshaped_weights.norm(2, dim=0)))
+        #model.encoder.rnn_lst[0].weight.norm(2, dim=0)
+    
 
 def init_logging(args):
     dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/"
@@ -149,18 +156,6 @@ def init_logging(args):
     
     logging_file = open(dir_path + file_name, "w")
 
-    #import pdb; pdb.set_trace()
-
-    #fileh = logging.FileHandler(dir_path + file_name, "w")
-    #formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    #fileh.setFormatter(formatter)
-    
-    #log = logging.getLogger()  # root logger
-    #for hdlr in log.handlers[:]:  # remove all old handlers
-    #    log.removeHandler(hdlr)
-    #log.addHandler(fileh)      # set the new handler
-            
-    #logging.basicConfig(level=logging.DEBUG, filename=dir_path+file_name, filemode="w")
     logging_file.write(str(args))
     print(args)
     print("saving in {}".format(args.file_name()))
@@ -189,19 +184,18 @@ def train_model(epoch, model, optimizer,
         if args.gpu:
             x, y = x.cuda(), y.cuda()
         x = (x)
+
         output = model(x)
         loss = criterion(output, y)
 
+        #import pdb; pdb.set_trace()
+        regularization_groups = get_regularization_groups(model, args)
+        log_groups(model, args, logging_file)
 
+        regularization_term = regularization_groups.sum()
 
-        regularization_term = get_regularization_term(model, args)
-        reg_debug(model, args, logging_file)
         reg_loss = loss + args.reg_strength * regularization_term
 
-        
-        #import pdb; pdb.set_trace()
-
-            
         reg_loss.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip_grad)
 
@@ -211,10 +205,6 @@ def train_model(epoch, model, optimizer,
             import pdb; pdb.set_trace()
         logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}".format(round(time.time() - iter_start_time,2),
                                                                    round(float(regularization_term),4), round(float(reg_loss),4)))
-    #sys.exit()
-    #import pdb; pdb.set_trace()
-    #print("GO THROUGH THE TENSOR TO SEE IF GROUPS ARE ZERO")
-
     
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)

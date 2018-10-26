@@ -197,6 +197,7 @@ def train_model(epoch, model, optimizer,
         reg_loss = loss + args.reg_strength * regularization_term
 
         reg_loss.backward()
+        
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip_grad)
 
 

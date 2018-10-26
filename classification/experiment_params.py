@@ -75,17 +75,17 @@ class ExperimentParams:
         #self.trainer = "sgd"
         #self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
-        self.gpu = True
+        #self.gpu = True
         self.d_out = 36
-        #self.depth = 1
+        self.depth = 1
         #self.num_epochs_debug = 10
         #self.lr=0.4856506
-        self.reg_strength=0.001
-        #self.rnn_dropout = 0
-        #self.embed_dropout = 0
+        #self.reg_strength=0.001
+        self.rnn_dropout = 0
+        self.embed_dropout = 0
 
-        #self.debug_run = True
-        self.pattern = "4-gram"
+        self.debug_run = True
+        self.pattern = "1-gram"
         self.use_rho = False
         self.use_epsilon_steps = False
         self.batch_size = 16

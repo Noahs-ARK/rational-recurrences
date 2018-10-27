@@ -75,22 +75,22 @@ class ExperimentParams:
         #self.trainer = "sgd"
         #self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
-        #self.gpu = True
-        self.d_out = 36
-        self.depth = 1
+        self.gpu = True
+        self.d_out = "20,12,2,2"
+        #self.depth = 1
         #self.num_epochs_debug = 10
         #self.lr=0.4856506
         #self.reg_strength=0.001
-        self.rnn_dropout = 0
-        self.embed_dropout = 0
+        #self.rnn_dropout = 0
+        #self.embed_dropout = 0
 
-        self.debug_run = True
-        self.pattern = "1-gram"
+        #self.debug_run = True
+        self.pattern = "1-gram,2-gram,3-gram,4-gram"
         self.use_rho = False
         self.use_epsilon_steps = False
         self.batch_size = 16
 
-        self.sparsity_type = "edges" # possible values: edges, wfsa
+        self.sparsity_type = "none" # possible values: edges, wfsa, none, states
         
         base_data_dir = "/home/jessedd/data/amazon"
         if self.debug_run:

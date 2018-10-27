@@ -71,7 +71,8 @@ class Model(nn.Module):
             d_out = args.d_out
         else:
             assert False
-        self.out = nn.Linear(d_out, nclasses)
+        out_size = sum([int(one_size) for one_size in d_out.split(",")])
+        self.out = nn.Linear(out_size, nclasses)
 
 
     def init_hidden(self, batch_size):
@@ -133,6 +134,18 @@ def get_regularization_groups(model, args):
         return l2_norm
     elif args.sparsity_type == 'edges':
         return model.encoder.rnn_lst[0].weight.norm(2, dim=0)
+    elif args.sparsity_type == 'states':
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+        num_wfsas = int(args.d_out)
+        reshaped_first_layer_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
+        reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
+        combined_layers = torch.cat((reshaped_first_layer_weights, reshaped_second_layer_weights), 0)
+        # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
+        states = torch.cat((combined_layers[...,0:int(num_edges_in_wfsa/2)],combined_layers[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
+        
+        return states.norm(2,dim=0) # a num_wfsa by n-gram matrix
+        
 
 def log_groups(model, args, logging_file):
     if args.sparsity_type == "wfsa":
@@ -148,6 +161,17 @@ def log_groups(model, args, logging_file):
         reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
         logging_file.write(str(reshaped_weights.norm(2, dim=0)))
         #model.encoder.rnn_lst[0].weight.norm(2, dim=0)
+    elif args.sparsity_type == 'states':
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+        num_wfsas = int(args.d_out)
+        reshaped_first_layer_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
+        reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
+        combined_layers = torch.cat((reshaped_first_layer_weights, reshaped_second_layer_weights), 0)
+        # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
+        states = torch.cat((combined_layers[...,0:int(num_edges_in_wfsa/2)],combined_layers[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
+        
+        logging_file.write(str(states.norm(2,dim=0))) # a num_wfsa by n-gram matrix
     
 
 def init_logging(args):
@@ -189,12 +213,14 @@ def train_model(epoch, model, optimizer,
         loss = criterion(output, y)
 
         #import pdb; pdb.set_trace()
-        regularization_groups = get_regularization_groups(model, args)
-        log_groups(model, args, logging_file)
-
-        regularization_term = regularization_groups.sum()
-
-        reg_loss = loss + args.reg_strength * regularization_term
+        if args.sparsity_type == "none":
+            reg_loss = loss
+            regularization_term = 0
+        else:
+            regularization_groups = get_regularization_groups(model, args)
+            log_groups(model, args, logging_file)
+            regularization_term = regularization_groups.sum()
+            reg_loss = loss + args.reg_strength * regularization_term
 
         reg_loss.backward()
         
@@ -204,7 +230,7 @@ def train_model(epoch, model, optimizer,
         optimizer.step()
         if args.num_epochs_debug != -1 and epoch > args.num_epochs_debug:
             import pdb; pdb.set_trace()
-        logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}".format(round(time.time() - iter_start_time,2),
+        logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}\n".format(round(time.time() - iter_start_time,2),
                                                                    round(float(regularization_term),4), round(float(reg_loss),4)))
     
     valid_err = eval_model(niter, model, valid_x, valid_y)
@@ -279,6 +305,7 @@ def main(args):
     )
 
     model = Model(args, emb_layer, nclasses)
+
     if args.gpu:
         model.cuda()
 

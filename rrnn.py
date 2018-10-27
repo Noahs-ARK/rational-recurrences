@@ -453,7 +453,7 @@ class RRNNCell(nn.Module):
             eps = self.bias_eps.view(bidir, n_out).sigmoid()
         else:
             eps = None
-        import pdb; pdb.set_trace()
+
         c1s, c2s, c1_final, c2_final= RRNN_Compute(u, c1_init, c2_init, eps)
 
         if self.use_rho:
@@ -563,14 +563,40 @@ class RRNNCell(nn.Module):
 
         for i in range(0, int(self.k/2)):
             u[..., i] = u_[..., i] * (1. - u[..., i + int(self.k/2)])  # input
-
+            
         if input.is_cuda:
-            assert self.k == 8, "custom cuda kernel only implemented for 4-gram models"
-            from rrnn_gpu import RRNN_4gram_Compute_GPU
-            RRNN_Compute_GPU = RRNN_4gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
-            c1s, c2s, c3s, c4s, last_c1, last_c2, last_c3, last_c4 = RRNN_Compute_GPU(u, cs_init[0], cs_init[1], cs_init[2], cs_init[3])
-            css = [c1s, c2s, c3s, c4s]
-            cs_final = [last_c1, last_c2, last_c3, last_c4]
+
+            if self.k == 8:
+
+                from rrnn_gpu import RRNN_4gram_Compute_GPU
+                RRNN_Compute_GPU = RRNN_4gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+                c1s, c2s, c3s, c4s, last_c1, last_c2, last_c3, last_c4 = RRNN_Compute_GPU(u, cs_init[0], cs_init[1], cs_init[2], cs_init[3])
+                css = [c1s, c2s, c3s, c4s]
+                cs_final = [last_c1, last_c2, last_c3, last_c4]
+
+            elif self.k == 6:
+                from rrnn_gpu import RRNN_3gram_Compute_GPU
+                RRNN_Compute_GPU = RRNN_3gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+                c1s, c2s, c3s, last_c1, last_c2, last_c3 = RRNN_Compute_GPU(u, cs_init[0], cs_init[1], cs_init[2])
+                css = [c1s, c2s, c3s]
+                cs_final = [last_c1, last_c2, last_c3]
+
+            elif self.k == 4:
+                from rrnn_gpu import RRNN_2gram_Compute_GPU
+                RRNN_Compute_GPU = RRNN_2gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+                c1s, c2s, last_c1, last_c2 = RRNN_Compute_GPU(u, cs_init[0], cs_init[1])
+                css = [c1s, c2s]
+                cs_final = [last_c1, last_c2]
+
+            elif self.k == 2:
+                from rrnn_gpu import RRNN_1gram_Compute_GPU
+                RRNN_Compute_GPU = RRNN_1gram_Compute_GPU(n_out, self.k, self.semiring, self.bidirectional)
+                c1s, last_c1 = RRNN_Compute_GPU(u, cs_init[0])
+                css = [c1s]
+                cs_final = [last_c1]
+
+            else:
+                assert False, "custom cuda kernel only implemented for 1,2,3,4-gram models"                
         else:
             RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
             css, cs_final = RRNN_Compute(u, cs_init, eps=None)
@@ -621,6 +647,69 @@ class RRNNCell(nn.Module):
             return Variable(w.new(*size).bernoulli_(1-p))
 
 
+class RRNNLayer(nn.Module):
+    def __init__(self,
+                 semiring,
+                 n_in,
+                 n_out,
+                 pattern,
+                 dropout=0.2,
+                 rnn_dropout=0.2,
+                 bidirectional=False,
+                 use_tanh=1,
+                 use_relu=0,
+                 use_selu=0,
+                 weight_norm=False,
+                 index=-1,
+                 use_output_gate=True,
+                 use_rho=False,
+                 use_epsilon_steps=True):
+        super(RRNNLayer, self).__init__()
+
+        self.cells = nn.ModuleList()
+        
+        assert len(pattern) == len(n_out)
+        num_cells = len(pattern)
+        for i in range(num_cells):
+            one_cell = RRNNCell(
+                semiring=semiring,
+                n_in=n_in,
+                n_out=n_out[i],
+                pattern=pattern[i],
+                dropout=dropout,
+                rnn_dropout=rnn_dropout,
+                bidirectional=bidirectional,
+                use_tanh=use_tanh,
+                use_relu=use_relu,
+                use_selu=use_selu,
+                weight_norm=weight_norm,
+                index=index,
+                use_output_gate=use_output_gate,
+                use_rho=use_rho,
+                use_epsilon_steps=use_epsilon_steps
+            )
+            self.cells.append(one_cell)
+
+    def init_weights(self):
+        for cell in self.cells:
+            cell.init_weights()
+            
+    def forward(self, input, init_hidden=None):
+        #import pdb; pdb.set_trace()
+        gcs, cs_final = self.cells[0](input, init_hidden)
+        for i, cell in enumerate(self.cells):
+            if i == 0:
+                continue
+            else:
+                gcs_cur, _ = cell(input, init_hidden)
+                gcs = torch.cat((gcs, gcs_cur), 2)
+                #for j in range(len(cs_final)):
+                #    cs_final[j] = torch.cat((cs_final[j], cs_final_cur[j]), 1)
+                #cs_final = torch.cat(cs_final, cs_final_cur)
+
+        return gcs, None
+    
+        
 class RRNN(nn.Module):
 
     def __init__(self,
@@ -644,9 +733,9 @@ class RRNN(nn.Module):
         assert not bidirectional
         self.semiring = semiring
         self.input_size = input_size
-        self.hidden_size = hidden_size
+        self.hidden_size = [int(one_size) for one_size in hidden_size.split(",")]
         self.num_layers = num_layers
-        self.pattern = pattern
+        self.pattern = [one_pattern for one_pattern in pattern.split(",")]
         self.dropout = dropout
         self.rnn_dropout = rnn_dropout
         self.rnn_lst = nn.ModuleList()
@@ -654,17 +743,19 @@ class RRNN(nn.Module):
         self.bidirectional = bidirectional
         self.use_layer_norm = layer_norm
         self.use_wieght_norm = weight_norm
-        self.out_size = hidden_size * 2 if bidirectional else hidden_size
+        #self.out_size = hidden_size * 2 if bidirectional else hidden_size
+
+        assert len(self.hidden_size) == len(self.pattern), "each n-gram must have an output size."
 
         if use_tanh + use_relu + use_selu > 1:
             sys.stderr.write("\nWARNING: More than one activation enabled in RRNN"
                 " (tanh: {}  relu: {}  selu: {})\n".format(use_tanh, use_relu, use_selu)
             )
-
+            
         for i in range(num_layers):
-            l = RRNNCell(
+            l = RRNNLayer(
                 semiring=semiring,
-                n_in=self.input_size if i == 0 else self.out_size,
+                n_in=self.input_size if i == 0 else sum(self.hidden_size),
                 n_out=self.hidden_size,
                 pattern=self.pattern,
                 dropout=dropout if i+1 != num_layers else 0.,
@@ -738,7 +829,7 @@ class RRNN(nn.Module):
 
 
 
-    def ngram_forward(self, input, ngram, init_hidden=None, return_hidden=True):
+    def ngram_forward(self, input, init_hidden=None, return_hidden=True):
         assert input.dim() == 3  # (len, batch, n_in)
         if init_hidden is None:
             init_hidden = [None for _ in range(self.num_layers)]
@@ -754,15 +845,17 @@ class RRNN(nn.Module):
             
 
         prevx = input
-        lstcs = [[] for i in range(ngram)]
+        # ngram used to be a parameter to this method.
+        #lstcs = [[] for i in range(ngram)]
 
         for i, rnn in enumerate(self.rnn_lst):
             h, cs = rnn(prevx, init_hidden[i])
-            for j in range(len(cs)):
-                lstcs[j].append(cs[j])
+            #for j in range(len(cs)):
+            #    lstcs[j].append(cs[j])
             prevx = self.ln_lst[i](h) if self.use_layer_norm else h
 
-        stacked_lstcs = [torch.stack(lstcs[i]) for i in range(len(lstcs))]
+        #stacked_lstcs = [torch.stack(lstcs[i]) for i in range(len(lstcs))]
+        stacked_lstcs = None
             
         if return_hidden:
             return prevx, stacked_lstcs
@@ -776,8 +869,8 @@ class RRNN(nn.Module):
             return self.bigram_forward(input, init_hidden, return_hidden)
         else:
             # it should be of the form "4-gram"
-            ngram = int(self.pattern.split("-")[0])
-            return self.ngram_forward(input, ngram, init_hidden, return_hidden)
+            #ngram = int(self.pattern.split("-")[0])
+            return self.ngram_forward(input, init_hidden, return_hidden)
 
 
 class LayerNorm(nn.Module):

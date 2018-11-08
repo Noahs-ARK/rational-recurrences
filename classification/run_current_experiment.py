@@ -33,7 +33,32 @@ if __name__ == "__main__":
 
     #uniform_hparam_search()
 
-    args = ExperimentParams(max_epoch=15)
-    train_classifier.main(args)
-    
+    exp_num = 3
 
+    # a basic experiment
+    if exp_num == 0:
+        args = ExperimentParams()
+        train_classifier.main(args)
+
+
+    # finding the largest learning rate that doesn't diverge
+    elif exp_num == 1:
+        lrs = np.linspace(2,0.1, 10)
+        for lr in lrs:
+            args = ExperimentParams(pattern="4-gram", d_out="256", trainer="sgd", max_epoch=3, lr=lr, filename_prefix="lr_tuning/")
+            train_classifier.main(args)
+
+            
+    # evaluating 1,2,3,4-gram models with equal numbers of each n-gram.
+    elif exp_num == 2:
+        for i in ["64,64,64,64", "6,6,6,6"]:
+            for j in [1,2]:
+                args = ExperimentParams(pattern="1-gram,2-gram,3-gram,4-gram", d_out=i, depth=j)
+                train_classifier.main(args)
+
+    # training with sgd, decreasing the learning rate potentially every round, starting with very high learning rate
+    elif exp_num == 3:
+        args = ExperimentParams(pattern="4-gram", d_out="24", trainer="sgd", lr=2, patience=100, lr_patience=0, lr_schedule_decay=0.85, filename_prefix="lr_tuning/")
+        train_classifier.main(args)
+
+    

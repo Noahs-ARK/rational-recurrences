@@ -4,13 +4,14 @@ class ExperimentParams:
     def __init__(self,
                  path = None,
                  embedding = None,
-                 seed = 31415,
+                 seed = 314159,
                  model = "rrnn",
                  semiring = "plus_times",
                  use_layer_norm = False,
                  use_output_gate = False,
                  use_rho = True,
                  use_epsilon_steps = True,
+                 pattern = "2-gram",
                  activation = "none",
                  trainer = "adam",
                  fix_embedding = True,                            
@@ -23,6 +24,7 @@ class ExperimentParams:
                  depth=2,
                  lr=0.001,
                  lr_decay=0,
+                 lr_schedule_decay=0,
                  gpu=False,
                  eval_ite=50,
                  patience=30,
@@ -32,7 +34,8 @@ class ExperimentParams:
                  reg_strength=0,
                  num_epochs_debug=-1,
                  debug_run = False,
-                 sparsity_type=None
+                 sparsity_type=None,
+                 filename_prefix=""
     ):
         self.path = path 
         self.embedding = embedding
@@ -43,6 +46,7 @@ class ExperimentParams:
         self.use_output_gate = use_output_gate
         self.use_rho = use_rho
         self.use_epsilon_steps = use_epsilon_steps
+        self.pattern = pattern
         self.activation = activation
         self.trainer = trainer
         self.fix_embedding = fix_embedding
@@ -54,7 +58,8 @@ class ExperimentParams:
         self.rnn_dropout = rnn_dropout
         self.depth = depth
         self.lr = lr
-        self.lr_decay =lr_decay
+        self.lr_decay = lr_decay
+        self.lr_schedule_decay = lr_schedule_decay
         self.gpu = gpu
         self.eval_ite = eval_ite
         self.patience = patience
@@ -65,7 +70,8 @@ class ExperimentParams:
         self.num_epochs_debug = num_epochs_debug
         self.debug_run = debug_run
         self.sparsity_type = sparsity_type
-
+        self.filename_prefix = filename_prefix
+        
         self.current_experiment()
 
     # overwrites the default values with the current experiment
@@ -76,16 +82,16 @@ class ExperimentParams:
         #self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
         self.gpu = True
-        self.d_out = "20,12,2,2"
+        #self.d_out = "64,64,64,64" #could total 36
         #self.depth = 1
         #self.num_epochs_debug = 10
         #self.lr=0.4856506
-        #self.reg_strength=0.001
+        #self.reg_strength=0.00001
         #self.rnn_dropout = 0
         #self.embed_dropout = 0
 
         #self.debug_run = True
-        self.pattern = "1-gram,2-gram,3-gram,4-gram"
+        #self.pattern = "1-gram,2-gram,3-gram,4-gram"
         self.use_rho = False
         self.use_epsilon_steps = False
         self.batch_size = 16
@@ -99,10 +105,12 @@ class ExperimentParams:
         self.embedding = base_data_dir + "/embedding"
 
     def file_name(self):
-        name = "norms_{}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}_sparsity={}".format(self.trainer,
-                                                                                                   self.lr, self.reg_strength,
-                                                                                                   self.d_out, self.rnn_dropout, self.pattern,
-                                                                                                   self.sparsity_type)
+        name = "{}norms_{}_layers={}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}_sparsity={}".format(
+            self.filename_prefix,
+            self.trainer, self.depth,
+            self.lr, self.reg_strength,
+            self.d_out, self.rnn_dropout, self.pattern,
+            self.sparsity_type)
         if not self.gpu:
             name = name + "_cpu"
         if self.debug_run:

@@ -138,40 +138,41 @@ def get_regularization_groups(model, args):
         embed_dim = model.emb_layer.n_d
         num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
         num_wfsas = int(args.d_out)
-        reshaped_first_layer_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
-        reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
-        combined_layers = torch.cat((reshaped_first_layer_weights, reshaped_second_layer_weights), 0)
+
+        reshaped_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
+        if len(model.encoder.rnn_lst) > 1:
+            reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
+            reshaped_weights = torch.cat((reshaped_weights, reshaped_second_layer_weights), 0)
+        elif len(model.encoder.rnn_lst) > 2:
+            assert False, "This regularization is only implemented for 2-layer networks."
+            
         # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
-        states = torch.cat((combined_layers[...,0:int(num_edges_in_wfsa/2)],combined_layers[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
+        states = torch.cat((reshaped_weights[...,0:int(num_edges_in_wfsa/2)],reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
         
         return states.norm(2,dim=0) # a num_wfsa by n-gram matrix
         
 
-def log_groups(model, args, logging_file):
-    if args.sparsity_type == "wfsa":
-        embed_dim = model.emb_layer.n_d
-        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
-        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
-        l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
-        logging_file.write(str(l2_norm))
-        
-    elif args.sparsity_type == 'edges':
-        embed_dim = model.emb_layer.n_d
-        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
-        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
-        logging_file.write(str(reshaped_weights.norm(2, dim=0)))
-        #model.encoder.rnn_lst[0].weight.norm(2, dim=0)
-    elif args.sparsity_type == 'states':
-        embed_dim = model.emb_layer.n_d
-        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
-        num_wfsas = int(args.d_out)
-        reshaped_first_layer_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
-        reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
-        combined_layers = torch.cat((reshaped_first_layer_weights, reshaped_second_layer_weights), 0)
-        # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
-        states = torch.cat((combined_layers[...,0:int(num_edges_in_wfsa/2)],combined_layers[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
-        
-        logging_file.write(str(states.norm(2,dim=0))) # a num_wfsa by n-gram matrix
+def log_groups(model, args, logging_file, groups=None):
+    if groups is not None:
+        logging_file.write(str(groups))
+
+    else:
+        if args.sparsity_type == "wfsa":
+            embed_dim = model.emb_layer.n_d
+            num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+            reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+            l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
+            logging_file.write(str(l2_norm))
+            
+        elif args.sparsity_type == 'edges':
+            embed_dim = model.emb_layer.n_d
+            num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+            reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+            logging_file.write(str(reshaped_weights.norm(2, dim=0)))
+            #model.encoder.rnn_lst[0].weight.norm(2, dim=0)
+        elif args.sparsity_type == 'states':
+            assert False, "can implement this based on get_regularization_groups, but that keeps changing"
+            logging_file.write(str(states.norm(2,dim=0))) # a num_wfsa by n-gram matrix
     
 
 def init_logging(args):
@@ -218,7 +219,7 @@ def train_model(epoch, model, optimizer,
             regularization_term = 0
         else:
             regularization_groups = get_regularization_groups(model, args)
-            log_groups(model, args, logging_file)
+            log_groups(model, args, logging_file, regularization_groups)
             regularization_term = regularization_groups.sum()
             reg_loss = loss + args.reg_strength * regularization_term
 
@@ -238,7 +239,7 @@ def train_model(epoch, model, optimizer,
 
     epoch_string = "\n"
     epoch_string += "-" * 110 + "\n"
-    epoch_string += "| Epoch={} | iter={} | lr={} | reg_strength={} | train_loss={:.6f} | valid_err={:.6f} | regularized_loss={:.6f} |\n".format(
+    epoch_string += "| Epoch={} | iter={} | lr={:.5f} | reg_strength={} | train_loss={:.6f} | valid_err={:.6f} | regularized_loss={:.6f} |\n".format(
         epoch, niter,
         optimizer.param_groups[0]["lr"],
         args.reg_strength,
@@ -324,7 +325,7 @@ def main(args):
             weight_decay=args.weight_decay
         )
 
-    scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=args.lr_patience, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=args.lr_schedule_decay, patience=args.lr_patience, verbose=True)
 
     best_valid = 1e+8
     test_err = 1e+8

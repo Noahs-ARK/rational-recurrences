@@ -219,9 +219,11 @@ class RRNNCell(nn.Module):
                  index=-1,
                  use_output_gate=True,
                  use_rho=False,
+                 rho_sum_to_one=False,
+                 use_last_cs=False,
                  use_epsilon_steps=True):
         super(RRNNCell, self).__init__()
-        assert (n_out % 2) == 0
+        #assert (n_out % 2) == 0
         self.semiring = semiring
         self.pattern = pattern
         self.n_in = n_in
@@ -235,6 +237,8 @@ class RRNNCell(nn.Module):
         self.activation_type = 0
         self.use_output_gate = use_output_gate  # borrowed from qrnn
         self.use_rho = use_rho
+        self.rho_sum_to_one = rho_sum_to_one
+        self.use_last_cs = use_last_cs
         self.use_epsilon_steps = use_epsilon_steps
         if use_tanh:
             self.activation_type = 1
@@ -602,17 +606,25 @@ class RRNNCell(nn.Module):
             css, cs_final = RRNN_Compute(u, cs_init, eps=None)
 
 
+
         # instead of using \rho to weight the sum, we can give uniform weight. this might be
         # more interpretable, as the \rhos might counteract the regularization terms
         if self.use_rho:
-            rho = self.bias_final.view(bidir, n_out, int(self.k/2)).sigmoid()
+            if self.rho_sum_to_one:
+                sm = nn.Softmax(dim=2)
+                rho = sm(self.bias_final.view(bidir, n_out, int(self.k/2)))
+            else:
+                rho = self.bias_final.view(bidir, n_out, int(self.k/2)).sigmoid()
             css_times_rho = []
             for i in range(len(css)):
                 css_times_rho.append(css[i] * rho[...,i])
 
             cs = sum(css_times_rho)
         else:
-            cs = sum(css)    
+            if self.use_last_cs:
+                cs = css[-1]
+            else:
+                cs = sum(css)
 
         if self.use_output_gate:
             assert False, "THIS HASN'T BEEN IMPLEMENTED YET!"
@@ -663,6 +675,8 @@ class RRNNLayer(nn.Module):
                  index=-1,
                  use_output_gate=True,
                  use_rho=False,
+                 rho_sum_to_one=False,
+                 use_last_cs=False,
                  use_epsilon_steps=True):
         super(RRNNLayer, self).__init__()
 
@@ -686,6 +700,8 @@ class RRNNLayer(nn.Module):
                 index=index,
                 use_output_gate=use_output_gate,
                 use_rho=use_rho,
+                rho_sum_to_one=rho_sum_to_one,
+                use_last_cs=use_last_cs,
                 use_epsilon_steps=use_epsilon_steps
             )
             self.cells.append(one_cell)
@@ -711,7 +727,6 @@ class RRNNLayer(nn.Module):
     
         
 class RRNN(nn.Module):
-
     def __init__(self,
                  semiring,
                  input_size,
@@ -728,6 +743,8 @@ class RRNN(nn.Module):
                  layer_norm=False,
                  use_output_gate=True,
                  use_rho=False,
+                 rho_sum_to_one=False,
+                 use_last_cs=False,
                  use_epsilon_steps=True):
         super(RRNN, self).__init__()
         assert not bidirectional
@@ -768,6 +785,8 @@ class RRNN(nn.Module):
                 index=i+1,
                 use_output_gate=use_output_gate,
                 use_rho=use_rho,
+                rho_sum_to_one=rho_sum_to_one,
+                use_last_cs=use_last_cs,
                 use_epsilon_steps=use_epsilon_steps
             )
             self.rnn_lst.append(l)

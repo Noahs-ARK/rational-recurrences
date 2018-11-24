@@ -1,4 +1,6 @@
-
+# these categories have more than 100 training instances.
+def get_categories():
+    return ["apparel/", "automotive/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "gourmet_food/", "grocery/", "health_&_personal_care/", "jewelry_&_watches/", "kitchen_&_housewares/", "magazines/", "music/", "outdoor_living/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
 
 class ExperimentParams:
     def __init__(self,
@@ -10,6 +12,8 @@ class ExperimentParams:
                  use_layer_norm = False,
                  use_output_gate = False,
                  use_rho = True,
+                 rho_sum_to_one = False,
+                 use_last_cs = False,
                  use_epsilon_steps = True,
                  pattern = "2-gram",
                  activation = "none",
@@ -17,14 +21,14 @@ class ExperimentParams:
                  fix_embedding = True,                            
                  batch_size = 32,
                  max_epoch=100,
-                 d_out=256,
+                 d_out="256",
                  dropout=0.2,
                  embed_dropout=0.2,
                  rnn_dropout=0.2,
-                 depth=2,
+                 depth=1,
                  lr=0.001,
                  lr_decay=0,
-                 lr_schedule_decay=0,
+                 lr_schedule_decay=0.5,
                  gpu=False,
                  eval_ite=50,
                  patience=30,
@@ -34,8 +38,10 @@ class ExperimentParams:
                  reg_strength=0,
                  num_epochs_debug=-1,
                  debug_run = False,
-                 sparsity_type=None,
-                 filename_prefix=""
+                 sparsity_type="none",
+                 filename_prefix="",
+                 dataset="amazon/",
+                 learned_structure=False
     ):
         self.path = path 
         self.embedding = embedding
@@ -45,6 +51,8 @@ class ExperimentParams:
         self.use_layer_norm = use_layer_norm
         self.use_output_gate = use_output_gate
         self.use_rho = use_rho
+        self.rho_sum_to_one = rho_sum_to_one
+        self.use_last_cs = use_last_cs
         self.use_epsilon_steps = use_epsilon_steps
         self.pattern = pattern
         self.activation = activation
@@ -71,6 +79,8 @@ class ExperimentParams:
         self.debug_run = debug_run
         self.sparsity_type = sparsity_type
         self.filename_prefix = filename_prefix
+        self.dataset = dataset
+        self.learned_structure = learned_structure
         
         self.current_experiment()
 
@@ -92,25 +102,33 @@ class ExperimentParams:
 
         #self.debug_run = True
         #self.pattern = "1-gram,2-gram,3-gram,4-gram"
-        self.use_rho = False
+        #self.use_rho = False
+        self.use_last_cs = True
         self.use_epsilon_steps = False
         self.batch_size = 16
 
-        self.sparsity_type = "none" # possible values: edges, wfsa, none, states
+        #self.sparsity_type = "none" # possible values: edges, wfsa, none, states, rho_entropy
         
-        base_data_dir = "/home/jessedd/data/amazon"
+        base_data_dir = "/home/jessedd/data/"
         if self.debug_run:
-            base_data_dir += "_debug"
+            base_data_dir += "amazon_debug/"
+        else:
+            base_data_dir += self.dataset
         self.path = base_data_dir
-        self.embedding = base_data_dir + "/embedding"
+        self.embedding = base_data_dir + "embedding"
 
     def file_name(self):
+
+        if self.sparsity_type == "none" and self.learned_structure:
+            sparsity_name = "learned"
+        else:
+            sparsity_name = self.sparsity_type
         name = "{}norms_{}_layers={}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}_sparsity={}".format(
             self.filename_prefix,
             self.trainer, self.depth,
             self.lr, self.reg_strength,
             self.d_out, self.rnn_dropout, self.pattern,
-            self.sparsity_type)
+            sparsity_name)
         if not self.gpu:
             name = name + "_cpu"
         if self.debug_run:

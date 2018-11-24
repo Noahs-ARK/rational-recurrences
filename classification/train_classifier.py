@@ -1,4 +1,5 @@
 import sys
+import os
 import argparse
 
 import numpy as np
@@ -66,6 +67,8 @@ class Model(nn.Module):
                 layer_norm=args.use_layer_norm,
                 use_output_gate=args.use_output_gate,
                 use_rho=args.use_rho,
+                rho_sum_to_one=args.rho_sum_to_one,
+                use_last_cs=args.use_last_cs,
                 use_epsilon_steps=args.use_epsilon_steps
             )
             d_out = args.d_out
@@ -150,12 +153,40 @@ def get_regularization_groups(model, args):
         states = torch.cat((reshaped_weights[...,0:int(num_edges_in_wfsa/2)],reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
         
         return states.norm(2,dim=0) # a num_wfsa by n-gram matrix
+    elif args.sparsity_type == "rho_entropy":
+        assert args.depth == 1, "rho_entropy regularization currently implemented for single layer networks"
+        bidirectional = model.encoder.rnn_lst[0].cells[0].bidirectional
+        assert not bidirectional, "bidirectional not implemented"
+        
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+        num_wfsas = int(args.d_out)
+        bias_final = model.encoder.rnn_lst[0].cells[0].bias_final
+        
+        sm = nn.Softmax(dim=2)
+        # the 1 in the line below is for non-bidirectional models, would be 2 for bidirectional
+        rho = sm(bias_final.view(1, num_wfsas, int(num_edges_in_wfsa/2)))
+        entropy_to_sum = rho * rho.log() * -1
+        entropy = entropy_to_sum.sum(dim=2)
+        return entropy
+        
+        
         
 
 def log_groups(model, args, logging_file, groups=None):
     if groups is not None:
-        logging_file.write(str(groups))
 
+        if args.sparsity_type == "rho_entropy":
+            num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+            num_wfsas = int(args.d_out)
+            bias_final = model.encoder.rnn_lst[0].cells[0].bias_final
+            
+            sm = nn.Softmax(dim=2)
+            # the 1 in the line below is for non-bidirectional models, would be 2 for bidirectional
+            rho = sm(bias_final.view(1, num_wfsas, int(num_edges_in_wfsa/2)))
+            logging_file.write(str(rho))
+
+        else:
+            logging_file.write(str(groups))
     else:
         if args.sparsity_type == "wfsa":
             embed_dim = model.emb_layer.n_d
@@ -176,16 +207,38 @@ def log_groups(model, args, logging_file, groups=None):
     
 
 def init_logging(args):
-    dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/"
+    dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/" + args.dataset + "/"
     file_name = args.file_name() + ".txt"
-    
-    logging_file = open(dir_path + file_name, "w")
 
+    if not os.path.exists(dir_path):
+        os.mkdir(dir_path)
+
+    if not os.path.exists(dir_path + args.filename_prefix):
+        os.mkdir(dir_path + args.filename_prefix)
+
+    torch.set_printoptions(threshold=5000)
+        
+    logging_file = open(dir_path + file_name, "w")
+    
     logging_file.write(str(args))
     print(args)
     print("saving in {}".format(args.file_name()))
     return logging_file
-    
+
+
+def regularization_stop(args, model):
+    if args.sparsity_type == "rho_entropy":
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+        num_wfsas = int(args.d_out)
+        bias_final = model.encoder.rnn_lst[0].cells[0].bias_final
+        
+        sm = nn.Softmax(dim=2)
+        # the 1 in the line below is for non-bidirectional models, would be 2 for bidirectional
+        rho = sm(bias_final.view(1, num_wfsas, int(num_edges_in_wfsa/2)))
+        if rho.max(dim=2)[0].min().data[0] > .99:
+            return True
+    else:
+        return False
 
 def train_model(epoch, model, optimizer,
                 train_x, train_y, valid_x, valid_y,
@@ -213,7 +266,6 @@ def train_model(epoch, model, optimizer,
         output = model(x)
         loss = criterion(output, y)
 
-        #import pdb; pdb.set_trace()
         if args.sparsity_type == "none":
             reg_loss = loss
             regularization_term = 0
@@ -231,8 +283,10 @@ def train_model(epoch, model, optimizer,
         optimizer.step()
         if args.num_epochs_debug != -1 and epoch > args.num_epochs_debug:
             import pdb; pdb.set_trace()
-        logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}\n".format(round(time.time() - iter_start_time,2),
-                                                                   round(float(regularization_term),4), round(float(reg_loss),4)))
+
+        # to log every batch's loss, and how long it took
+        #logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}\n".format(round(time.time() - iter_start_time,2),
+        #                                                           round(float(regularization_term),4), round(float(reg_loss),4)))
     
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
@@ -259,7 +313,7 @@ def train_model(epoch, model, optimizer,
         test_err = eval_model(niter, model, test_x, test_y)
     else:
         unchanged += 1
-    if unchanged >= args.patience:
+    if unchanged >= args.patience: # or regularization_stop(args, model):
         stop = True
 
     sys.stdout.write("\n")

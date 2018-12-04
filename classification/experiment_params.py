@@ -1,11 +1,13 @@
-# these categories have more than 100 training instances.
+# these egories have more than 100 training instances.
 def get_categories():
-    return ["apparel/", "automotive/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "gourmet_food/", "grocery/", "health_&_personal_care/", "jewelry_&_watches/", "kitchen_&_housewares/", "magazines/", "music/", "outdoor_living/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
+    #return ["apparel/", "automotive/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "gourmet_food/", "grocery/", "health_&_personal_care/", "jewelry_&_watches/", "kitchen_&_housewares/", "magazines/", "music/", "outdoor_living/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
+    return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
 
 class ExperimentParams:
     def __init__(self,
                  path = None,
                  embedding = None,
+                 loaded_embedding = None,
                  seed = 314159,
                  model = "rrnn",
                  semiring = "plus_times",
@@ -14,13 +16,13 @@ class ExperimentParams:
                  use_rho = True,
                  rho_sum_to_one = False,
                  use_last_cs = False,
-                 use_epsilon_steps = True,
+                 use_epsilon_steps = False,
                  pattern = "2-gram",
                  activation = "none",
                  trainer = "adam",
                  fix_embedding = True,                            
-                 batch_size = 32,
-                 max_epoch=100,
+                 batch_size = 64,
+                 max_epoch=500,
                  d_out="256",
                  dropout=0.2,
                  embed_dropout=0.2,
@@ -29,7 +31,7 @@ class ExperimentParams:
                  lr=0.001,
                  lr_decay=0,
                  lr_schedule_decay=0.5,
-                 gpu=False,
+                 gpu=True,
                  eval_ite=50,
                  patience=30,
                  lr_patience=10,
@@ -40,11 +42,13 @@ class ExperimentParams:
                  debug_run = False,
                  sparsity_type="none",
                  filename_prefix="",
+                 filename_suffix="",
                  dataset="amazon/",
                  learned_structure=False
     ):
         self.path = path 
         self.embedding = embedding
+        self.loaded_embedding = loaded_embedding
         self.seed = seed
         self.model = model
         self.semiring = semiring
@@ -79,6 +83,7 @@ class ExperimentParams:
         self.debug_run = debug_run
         self.sparsity_type = sparsity_type
         self.filename_prefix = filename_prefix
+        self.filename_suffix = filename_suffix
         self.dataset = dataset
         self.learned_structure = learned_structure
         
@@ -91,7 +96,7 @@ class ExperimentParams:
         #self.trainer = "sgd"
         #self.reg_strength = 0.0005 #0.0032028
         #self.weight_decay = 0
-        self.gpu = True
+        #self.gpu = True
         #self.d_out = "64,64,64,64" #could total 36
         #self.depth = 1
         #self.num_epochs_debug = 10
@@ -103,9 +108,8 @@ class ExperimentParams:
         #self.debug_run = True
         #self.pattern = "1-gram,2-gram,3-gram,4-gram"
         #self.use_rho = False
-        self.use_last_cs = True
-        self.use_epsilon_steps = False
-        self.batch_size = 16
+        #self.use_last_cs = True
+        #self.batch_size = 16
 
         #self.sparsity_type = "none" # possible values: edges, wfsa, none, states, rho_entropy
         
@@ -123,16 +127,17 @@ class ExperimentParams:
             sparsity_name = "learned"
         else:
             sparsity_name = self.sparsity_type
-        name = "{}norms_{}_layers={}_lr={:.7f}_regstr={:.7f}_dout={}_dropout={}_pattern={}_sparsity={}".format(
-            self.filename_prefix,
-            self.trainer, self.depth,
-            self.lr, self.reg_strength,
-            self.d_out, self.rnn_dropout, self.pattern,
-            sparsity_name)
+        if self.debug_run:
+            self.filename_prefix += "DEBUG_"
+        name = "{}{}_layers={}_lr={:.3E}_dout={}_drout={:.4f}_rnndout={:.4f}_embdout={:.4f}_wdecay={:.2E}_clip={:.2f}_pattern={}_sparsity={}".format(
+            self.filename_prefix, self.trainer, self.depth, self.lr, self.d_out, self.dropout, self.rnn_dropout, self.embed_dropout,
+            self.weight_decay, self.clip_grad, self.pattern, sparsity_name)
+        if self.reg_strength > 0:
+            name += "_regstr={:.7f}".format(self.reg_strength)
+        if self.filename_suffix != "":
+            name += self.filename_suffix
         if not self.gpu:
             name = name + "_cpu"
-        if self.debug_run:
-            name = "DEBUG_" + name
 
         return name
 

@@ -219,9 +219,13 @@ def init_logging(args):
     torch.set_printoptions(threshold=5000)
         
     logging_file = open(dir_path + file_name, "w")
-    
+
+    tmp = args.loaded_embedding
+    args.loaded_embedding=True
     logging_file.write(str(args))
-    print(args)
+    args.loaded_embedding = tmp
+    
+    #print(args)
     print("saving in {}".format(args.file_name()))
     return logging_file
 
@@ -323,12 +327,16 @@ def train_model(epoch, model, optimizer,
 
 def main(args):
     logging_file = init_logging(args)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    if args.seed:
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
     train_X, train_Y, valid_X, valid_Y, test_X, test_Y = dataloader.read_SST(args.path)
     data = train_X + valid_X + test_X
 
-    embs = dataloader.load_embedding(args.embedding)
+    if args.loaded_embedding:
+        embs = args.loaded_embedding
+    else:
+        embs = dataloader.load_embedding(args.embedding)
     emb_layer = modules.EmbeddingLayer(
         data,
         fix_emb=args.fix_embedding,
@@ -418,6 +426,7 @@ def main(args):
     logging_file.write("best_valid: {:.6f}\n".format(best_valid))
     logging_file.write("test_err: {:.6f}\n".format(test_err))
     logging_file.close()
+    return best_valid, test_err
 
 
 

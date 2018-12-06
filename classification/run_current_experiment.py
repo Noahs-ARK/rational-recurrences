@@ -29,10 +29,9 @@ def hparam_sample():
     return assignments
 
 def main():
-
     loaded_embedding = preload_embed()
     
-    exp_num = 3
+    exp_num = 7
 
     
     
@@ -64,7 +63,7 @@ def main():
     elif exp_num == 3:
         start_time = time.time()
         counter = [0]
-        categories = [""]#["books/", "dvd/"] #["kitchen_&_housewares/","camera_&_photo/"] #["apparel/", "health_&_personal_care/", "toys_&_games/"]
+        categories = [""]
         patterns = ["4-gram", "3-gram", "2-gram", "1-gram"]
         m = 20
         n = 5
@@ -76,76 +75,59 @@ def main():
                                       use_last_cs=True, dataset = "amazon/" + category, use_rho=False,
                                       seed=None, loaded_embedding=loaded_embedding, batch_size=32)
 
-            train_m_then_n_models(20,5,counter, total_evals, start_time,
+            train_m_then_n_models(m,n,counter, total_evals, start_time,
                                   pattern="1-gram,2-gram,3-gram,4-gram", d_out = "6,6,6,6", depth = 1,
                                   filename_prefix="only_last_cs/hparam_opt/", use_last_cs=True,
                                   dataset = "amazon/" + category, use_rho = False, seed=None,
                                   loaded_embedding = loaded_embedding, batch_size=32)
                     
-                                    
-    elif exp_num == 5:
-        for lr in [0.00025, 0.001]:
-            categories = get_categories()
-            for category in categories:
-                for d_out in ["24", "256"]:
-                    for pattern in ["4-gram", "3-gram", "2-gram", "1-gram"]:
-
-                        args = ExperimentParams(pattern=pattern, d_out = d_out, depth = 1, filename_prefix="only_last_cs/",
-                                                use_last_cs=True, lr=lr, dataset = "amazon_categories/" + category, use_rho=False)
-                        train_classifier.main(args)
-
-
-                args = ExperimentParams(pattern="1-gram,2-gram,3-gram,4-gram", d_out = "64,64,64,64", depth = 1,
-                                        filename_prefix="only_last_cs/", use_last_cs=True, lr=lr, use_rho=False,
-                                        dataset = "amazon_categories/" + category)
-                train_classifier.main(args)
-
-                args = ExperimentParams(pattern="1-gram,2-gram,3-gram,4-gram", d_out = "6,6,6,6", depth = 1,
-                                        filename_prefix="only_last_cs/", use_last_cs=True, lr=lr,
-                                        dataset = "amazon_categories/" + category, use_rho = False)
-                train_classifier.main(args)
-
-
     elif exp_num == 7:
-        categories = get_categories()
-        for lr in [0.001]:#, 0.00025]:
-            for d_out in ["24"]:#, "256"]:
-                for category in categories:
-                    for rerun_num in range(4):
-                        # to learn the structure
-                        args = ExperimentParams(use_rho = True, pattern = "4-gram", sparsity_type = "rho_entropy",
-                                                rho_sum_to_one=True, reg_strength = 0.01, d_out=d_out, lr=lr,
-                                                filename_prefix="only_last_cs/", filename_suffix="_{}".format(rerun_num),
-                                                dataset = "amazon_categories/" + category, seed=None,
-                                                loaded_embedding=loaded_embedding)
 
-                        train_classifier.main(args)
-                        
-                        # load learned structure from file
-                        file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon_categories/" + category
-                        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt")
-                        print(lr, d_out, category, frac_under_pointnine)
-                        
-                        # train and eval the learned structure
-                        args = ExperimentParams(pattern = learned_pattern, d_out=learned_d_out, lr=lr, filename_prefix="only_last_cs/",
-                                                dataset = "amazon_categories/" + category, use_last_cs=True, learned_structure=True,
-                                                use_rho = False, filename_suffix="_{}".format(rerun_num), seed=None,
-                                                loaded_embedding=loaded_embedding)
-                        train_classifier.main(args)
+        start_time = time.time()
+        counter = [0]
+        k = 25
+        m = 20
+        n = 5
+        categories = [get_categories()[0]]
+        total_evals = len(categories) * (k + m + n)
+        all_reg_search_counters = []
+        
+        for d_out in ["24"]:#, "256"]:
+            for category in categories:
+                # to learn the structure
+                best, reg_search_counters = train_k_models_entropy_reg(k, counter, total_evals, start_time,
+                                                                       use_rho = True, pattern = "4-gram", sparsity_type = "rho_entropy",
+                                                                       rho_sum_to_one=True, reg_strength = 1, d_out=d_out,
+                                                                       filename_prefix="only_last_cs/hparam_opt/reg_str_search/",
+                                                                       dataset = "amazon_categories/" + category, seed=None,
+                                                                       loaded_embedding=loaded_embedding)
+                
+                all_reg_search_counters.append(reg_search_counters)
+                print(best["learned_pattern"], best["learned_d_out"], category, frac_under_pointnine)
+                
+                # train and eval the learned structure
+                args = train_m_then_n_models(m,n,counter, total_evals,start_time,
+                                             pattern = best["learned_pattern"], d_out=best["learned_d_out"],
+                                             filename_prefix="only_last_cs/hparam_opt/",
+                                             dataset = "amazon_categories/" + category, use_last_cs=True, learned_structure=True,
+                                             use_rho = False, seed=None, loaded_embedding=loaded_embedding)
 
-def search_reg_str(cur_reg_str, cur_assignments, **kwargs):
-    file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon_categories/" + category
+
+def search_reg_str(cur_assignments, kwargs):
+    file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/" + kwargs["dataset"]    
     found_small_enough_reg_str = False
     # first search by checking that after 5 epochs, more than half aren't above .9
-    kwargs["reg_strength"] = cur_reg_str
     kwargs["max_epoch"] = 5
     counter = 0
+    import pdb; pdb.set_trace()
     while not found_small_enough_reg_str:
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
         learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt")
+        print("fraction under .9: {}".format(frac_under_pointnine))
+        print("")
         if frac_under_pointnine < .25:
             kwargs["reg_strength"] = kwargs["reg_strength"]/2.0
         else:
@@ -159,27 +141,43 @@ def search_reg_str(cur_reg_str, cur_assignments, **kwargs):
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
         learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt")
+        print("fraction under .9: {}".format(frac_under_pointnine))
+        print("")
         if frac_under_pointnine > .25:
             kwargs["reg_strength"] = kwargs["reg_strength"] * 2.0
         else:
-            found_small_enough_reg_str = True
+            found_large_enough_reg_str = True
     # to set this back to the default
     kwargs["max_epoch"] = 500
-    return kwargs["reg_strength"], counter
-            
-def train_m_then_n_models_entropy_reg(m,n,counter,total_evals,start_time,**kwargs):
+    return counter
+
+#orders them in increasing order of lr
+def get_k_sorted_hparams(k):
+    all_assignments = []
+    
+    for i in range(k):
+        cur = hparam_sample()
+        all_assignments.append([cur['lr'], cur])
+    all_assignments.sort()
+    return [assignment[1] for assignment in all_assignments]
+        
+
+def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
+    assert "reg_strength" in kwargs
+    file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/" + kwargs["dataset"]    
     best = {
-        "assignment" = None,
-        "valid_err" = 1,
-        "learned_pattern" = None,
-        "learned_d_out" = None
+        "assignment" : None,
+        "valid_err" : 1,
+        "learned_pattern" : None,
+        "learned_d_out" : None,
+        "frac_under_pointnine": None
         }
-    cur_reg_str = 0.1
 
     reg_search_counters = []
-    for i in range(m):
-        cur_assignments = hparam_sample()
-        cur_reg_str, one_search_counter = search_reg_str(cur_reg_str, cur_assignments, **kwargs)
+    all_assignments = get_k_sorted_hparams(k)
+    for cur_assignments in all_assignments:
+
+        one_search_counter = search_reg_str(cur_assignments, kwargs)
         reg_search_counters.append(one_search_counter)
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
@@ -188,31 +186,18 @@ def train_m_then_n_models_entropy_reg(m,n,counter,total_evals,start_time,**kwarg
         
         if cur_valid_err < best["valid_err"]:
             best = {
-                "assignment" = cur_assignments,
-                "valid_err" = cur_valid_err,
-                "learned_pattern" = learned_pattern,
-                "learned_d_out" = learned_d_out
+                "assignment" : cur_assignments,
+                "valid_err" : cur_valid_err,
+                "learned_pattern" : learned_pattern,
+                "learned_d_out" : learned_d_out,
+                "frac_under_pointnine": frac_under_pointnine
             }
 
         counter[0] = counter[0] + 1
         print("trained {} out of {} hyperparameter assignments, so far {} seconds".format(
             counter[0],total_evals, round(time.time()-start_time, 3)))
-
-    kwargs["pattern"] = best["learned_pattern"]
-    kwargs["d_out"] = best["learned_d_out"]
-    kwargs["use_last_cs"]=True
-    kwargs["learned_structure"]=True
-    kwargs["use_rho"] = False
-    (pattern = learned_pattern, d_out=learned_d_out, lr=lr, filename_prefix="only_last_cs/",
-                                                dataset = "amazon_categories/" + category, use_last_cs=True, learned_structure=True,
-                                                use_rho = False, filename_suffix="_{}".format(rerun_num), seed=None,
-                                                loaded_embedding=loaded_embedding)
-    for i in range(n):
-        args = ExperimentParams(filename_suffix="_{}".format(i),**kwargs,**best["assignment"])
-        cur_valid_err, cur_test_err = train_classifier.main(args)
-        counter[0] = counter[0] + 1
-        print("trained {} out of {} hyperparameter assignments, so far {} seconds".format(
-            counter[0],total_evals, round(time.time()-start_time, 3)))
+    import pdb; pdb.set_trace()
+    return best, reg_search_counters
 
 def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):
     best_assignment = None

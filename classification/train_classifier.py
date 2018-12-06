@@ -275,7 +275,7 @@ def train_model(epoch, model, optimizer,
             regularization_term = 0
         else:
             regularization_groups = get_regularization_groups(model, args)
-            log_groups(model, args, logging_file, regularization_groups)
+            #log_groups(model, args, logging_file, regularization_groups)
             regularization_term = regularization_groups.sum()
             reg_loss = loss + args.reg_strength * regularization_term
 
@@ -291,6 +291,8 @@ def train_model(epoch, model, optimizer,
         # to log every batch's loss, and how long it took
         #logging_file.write("took {} seconds. reg_term: {}, reg_loss: {}\n".format(round(time.time() - iter_start_time,2),
         #                                                           round(float(regularization_term),4), round(float(reg_loss),4)))
+    regularization_groups = get_regularization_groups(model, args)
+    log_groups(model, args, logging_file, regularization_groups)
     
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)

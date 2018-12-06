@@ -1,7 +1,8 @@
 # these egories have more than 100 training instances.
 def get_categories():
     #return ["apparel/", "automotive/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "gourmet_food/", "grocery/", "health_&_personal_care/", "jewelry_&_watches/", "kitchen_&_housewares/", "magazines/", "music/", "outdoor_living/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
-    return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
+    #return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
+    return ["camera_&_photo/", "apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/", "books/"]
 
 class ExperimentParams:
     def __init__(self,
@@ -133,7 +134,7 @@ class ExperimentParams:
             self.filename_prefix, self.trainer, self.depth, self.lr, self.d_out, self.dropout, self.rnn_dropout, self.embed_dropout,
             self.weight_decay, self.clip_grad, self.pattern, sparsity_name)
         if self.reg_strength > 0:
-            name += "_regstr={:.7f}".format(self.reg_strength)
+            name += "_regstr={:.3E}".format(self.reg_strength)
         if self.filename_suffix != "":
             name += self.filename_suffix
         if not self.gpu:

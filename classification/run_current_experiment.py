@@ -199,13 +199,16 @@ def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
                 if lr_judgement == "too_big_lr":
                     # lower the upper bound
                     lr_upper_bound = cur_assignments['lr']
+                    reverse = True
                 elif lr_judgement == "too_small_lr":
                     # rase lower bound
                     lr_lower_bound = cur_assignments['lr']
+                    reverse = False
                 else:
                     assert False, "shouldn't be here."
                 new_assignments = get_k_sorted_hparams(k-i, lr_lower_bound, lr_upper_bound)
-                new_assignments.reverse()
+                if reverse:
+                    new_assignments.reverse()
                 all_assignments[i:len(all_assignments)] = new_assignments
 
 

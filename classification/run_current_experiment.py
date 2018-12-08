@@ -16,13 +16,13 @@ def preload_embed():
 
 # hparams to search over (from paper):
 # clip_grad, dropout, learning rate, rnn_dropout, embed_dropout, l2 regularization (actually weight decay)
-def hparam_sample():
+def hparam_sample(lr_bounds = [1.5, 10**-3]):
     assignments = {
         "clip_grad" : np.random.uniform(1.0, 5.0),
         "dropout" : np.random.uniform(0.0, 0.5),
         "rnn_dropout" : np.random.uniform(0.0, 0.5),
         "embed_dropout" : np.random.uniform(0.0, 0.5),
-        "lr" : np.exp(np.random.uniform(np.log(1.5), np.log(10**-3))),
+        "lr" : np.exp(np.random.uniform(np.log(lr_bounds[0]), np.log(lr_bounds[1]))),
         "weight_decay" : np.exp(np.random.uniform(np.log(10**-5), np.log(10**-7))),
     }
 
@@ -88,7 +88,7 @@ def main():
         k = 25
         m = 20
         n = 5
-        categories = [get_categories()[0]]
+        categories = get_categories() #[get_categories()[len(get_categories())-1]]
         total_evals = len(categories) * (k + m + n)
         all_reg_search_counters = []
         
@@ -103,23 +103,26 @@ def main():
                                                                        loaded_embedding=loaded_embedding)
                 
                 all_reg_search_counters.append(reg_search_counters)
-                print(best["learned_pattern"], best["learned_d_out"], category, frac_under_pointnine)
-                
+
+
                 # train and eval the learned structure
                 args = train_m_then_n_models(m,n,counter, total_evals,start_time,
                                              pattern = best["learned_pattern"], d_out=best["learned_d_out"],
                                              filename_prefix="only_last_cs/hparam_opt/",
                                              dataset = "amazon_categories/" + category, use_last_cs=True, learned_structure=True,
                                              use_rho = False, seed=None, loaded_embedding=loaded_embedding)
+        print("search counters:")
+        for search_counter in all_reg_search_counters:
+            print(search_counter)
 
 
 def search_reg_str(cur_assignments, kwargs):
+    starting_reg_str = kwargs["reg_strength"]
     file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/" + kwargs["dataset"]    
     found_small_enough_reg_str = False
     # first search by checking that after 5 epochs, more than half aren't above .9
     kwargs["max_epoch"] = 5
     counter = 0
-    import pdb; pdb.set_trace()
     while not found_small_enough_reg_str:
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
@@ -129,12 +132,15 @@ def search_reg_str(cur_assignments, kwargs):
         print("fraction under .9: {}".format(frac_under_pointnine))
         print("")
         if frac_under_pointnine < .25:
-            kwargs["reg_strength"] = kwargs["reg_strength"]/2.0
+            kwargs["reg_strength"] = kwargs["reg_strength"] / 2.0
+            if kwargs["reg_strength"] < 10**-7:
+                kwargs["reg_strength"] = starting_reg_str
+                return counter, "too_big_lr"
         else:
             found_small_enough_reg_str = True
 
     found_large_enough_reg_str = False
-    kwargs["max_epoch"] = 50
+    kwargs["max_epoch"] = 25
     while not found_large_enough_reg_str:
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
@@ -145,18 +151,21 @@ def search_reg_str(cur_assignments, kwargs):
         print("")
         if frac_under_pointnine > .25:
             kwargs["reg_strength"] = kwargs["reg_strength"] * 2.0
+            if kwargs["reg_strength"] > 10**4:
+                kwargs["reg_strength"] = starting_reg_str
+                return counter, "too_small_lr"
         else:
             found_large_enough_reg_str = True
     # to set this back to the default
     kwargs["max_epoch"] = 500
-    return counter
+    return counter, "okay_lr"
 
 #orders them in increasing order of lr
-def get_k_sorted_hparams(k):
+def get_k_sorted_hparams(k,lr_lower_bound, lr_upper_bound):
     all_assignments = []
     
     for i in range(k):
-        cur = hparam_sample()
+        cur = hparam_sample(lr_bounds=[lr_lower_bound,lr_upper_bound])
         all_assignments.append([cur['lr'], cur])
     all_assignments.sort()
     return [assignment[1] for assignment in all_assignments]
@@ -174,11 +183,34 @@ def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
         }
 
     reg_search_counters = []
-    all_assignments = get_k_sorted_hparams(k)
-    for cur_assignments in all_assignments:
+    lr_lower_bound = 5*10**-3
+    lr_upper_bound = 1.5
+    all_assignments = get_k_sorted_hparams(k, lr_lower_bound, lr_upper_bound)
+    for i in range(len(all_assignments)):
 
-        one_search_counter = search_reg_str(cur_assignments, kwargs)
-        reg_search_counters.append(one_search_counter)
+        valid_assignment = False
+        while not valid_assignment:
+            cur_assignments = all_assignments[i]
+            one_search_counter, lr_judgement = search_reg_str(cur_assignments, kwargs)
+            reg_search_counters.append(one_search_counter)
+            if lr_judgement == "okay_lr":
+                valid_assignment = True
+            else:
+                if lr_judgement == "too_big_lr":
+                    # lower the upper bound
+                    lr_upper_bound = cur_assignments['lr']
+                elif lr_judgement == "too_small_lr":
+                    # rase lower bound
+                    lr_lower_bound = cur_assignments['lr']
+                else:
+                    assert False, "shouldn't be here."
+                new_assignments = get_k_sorted_hparams(k-i, lr_lower_bound, lr_upper_bound)
+                new_assignments.reverse()
+                all_assignments[i:len(all_assignments)] = new_assignments
+
+
+                
+
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
@@ -196,7 +228,6 @@ def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
         counter[0] = counter[0] + 1
         print("trained {} out of {} hyperparameter assignments, so far {} seconds".format(
             counter[0],total_evals, round(time.time()-start_time, 3)))
-    import pdb; pdb.set_trace()
     return best, reg_search_counters
 
 def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):

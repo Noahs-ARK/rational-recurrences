@@ -2,7 +2,7 @@ import numpy as np
 import collections
 
 
-def from_file(file_loc):
+def from_file(file_loc, rho_bound):
     backwards_lines = []
     with open(file_loc, "r") as f:
         lines = f.readlines()
@@ -21,15 +21,15 @@ def from_file(file_loc):
     backwards_lines = backwards_lines[:len(backwards_lines)-1]
 
 
-    return extract_ngrams(backwards_lines)
+    return extract_ngrams(backwards_lines, rho_bound)
 
 
-def extract_ngrams(rhos):
+def extract_ngrams(rhos, rho_bound):
     ngram_counts = collections.Counter()
     num_less_than_pointnine = 0
     for rho_line in rhos:
         cur_rho_line = np.fromstring(rho_line, dtype=float, sep = " ")
-        if max(cur_rho_line) < .9:
+        if max(cur_rho_line) < rho_bound:
             num_less_than_pointnine += 1
         cur_ngram = np.argmax(cur_rho_line)
         ngram_counts[cur_ngram] = ngram_counts[cur_ngram] + 1

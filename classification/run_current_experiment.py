@@ -28,10 +28,20 @@ def hparam_sample(lr_bounds = [1.5, 10**-3]):
 
     return assignments
 
+#orders them in increasing order of lr
+def get_k_sorted_hparams(k,lr_lower_bound, lr_upper_bound):
+    all_assignments = []
+    
+    for i in range(k):
+        cur = hparam_sample(lr_bounds=[lr_lower_bound,lr_upper_bound])
+        all_assignments.append([cur['lr'], cur])
+    all_assignments.sort()
+    return [assignment[1] for assignment in all_assignments]
+
 def main():
     loaded_embedding = preload_embed()
     
-    exp_num = 7
+    exp_num = 8
 
     
     
@@ -115,21 +125,42 @@ def main():
         for search_counter in all_reg_search_counters:
             print(search_counter)
 
+    elif exp_num == 8:
+        start_time = time.time()
+        counter = [0]
+        k = 20
+        l = 5
+        categories = get_categories() #[get_categories()[len(get_categories())-1]]
+        total_evals = len(categories) * (k + l)
+
+        
+        for d_out in ["24"]:#, "256"]:
+            for category in categories:
+                # to learn the structure, and train with the regularizer
+                best, reg_search_counters = train_k_then_l_models_entropy_reg(k, l, counter, total_evals, start_time,
+                                                                       use_rho = True, pattern = "4-gram", sparsity_type = "rho_entropy",
+                                                                       rho_sum_to_one=True, reg_strength = 1, d_out=d_out,
+                                                                       filename_prefix="only_last_cs/hparam_opt/reg_str_search/",
+                                                                       dataset = "amazon_categories/" + category, seed=None,
+                                                                       loaded_embedding=loaded_embedding)
+        
+
 
 def search_reg_str(cur_assignments, kwargs):
     starting_reg_str = kwargs["reg_strength"]
     file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/" + kwargs["dataset"]    
     found_small_enough_reg_str = False
     # first search by checking that after 5 epochs, more than half aren't above .9
-    kwargs["max_epoch"] = 5
+    kwargs["max_epoch"] = 1
     counter = 0
+    rho_bound = .99
     while not found_small_enough_reg_str:
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
-        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt")
-        print("fraction under .9: {}".format(frac_under_pointnine))
+        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt", rho_bound)
+        print("fraction under {}: {}".format(rho_bound,frac_under_pointnine))
         print("")
         if frac_under_pointnine < .25:
             kwargs["reg_strength"] = kwargs["reg_strength"] / 2.0
@@ -140,14 +171,15 @@ def search_reg_str(cur_assignments, kwargs):
             found_small_enough_reg_str = True
 
     found_large_enough_reg_str = False
-    kwargs["max_epoch"] = 25
+    kwargs["max_epoch"] = 5
+    rho_bound = .9
     while not found_large_enough_reg_str:
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
-        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt")
-        print("fraction under .9: {}".format(frac_under_pointnine))
+        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt", rho_bound)
+        print("fraction under {}: {}".format(rho_bound,frac_under_pointnine))
         print("")
         if frac_under_pointnine > .25:
             kwargs["reg_strength"] = kwargs["reg_strength"] * 2.0
@@ -159,19 +191,8 @@ def search_reg_str(cur_assignments, kwargs):
     # to set this back to the default
     kwargs["max_epoch"] = 500
     return counter, "okay_lr"
-
-#orders them in increasing order of lr
-def get_k_sorted_hparams(k,lr_lower_bound, lr_upper_bound):
-    all_assignments = []
-    
-    for i in range(k):
-        cur = hparam_sample(lr_bounds=[lr_lower_bound,lr_upper_bound])
-        all_assignments.append([cur['lr'], cur])
-    all_assignments.sort()
-    return [assignment[1] for assignment in all_assignments]
         
-
-def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
+def train_k_then_l_models_entropy_reg(k,l,counter,total_evals,start_time,**kwargs):
     assert "reg_strength" in kwargs
     file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/" + kwargs["dataset"]    
     best = {
@@ -179,7 +200,8 @@ def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
         "valid_err" : 1,
         "learned_pattern" : None,
         "learned_d_out" : None,
-        "frac_under_pointnine": None
+        "frac_under_pointnine": None,
+        "reg_strength": None
         }
 
     reg_search_counters = []
@@ -210,14 +232,12 @@ def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
                 if reverse:
                     new_assignments.reverse()
                 all_assignments[i:len(all_assignments)] = new_assignments
-
-
                 
 
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
-        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt")
+        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(file_base + args.file_name() + ".txt", .9)
         
         if cur_valid_err < best["valid_err"]:
             best = {
@@ -225,12 +245,22 @@ def train_k_models_entropy_reg(k,counter,total_evals,start_time,**kwargs):
                 "valid_err" : cur_valid_err,
                 "learned_pattern" : learned_pattern,
                 "learned_d_out" : learned_d_out,
-                "frac_under_pointnine": frac_under_pointnine
+                "frac_under_pointnine": frac_under_pointnine,
+                "reg_strength": kwargs["reg_strength"]
             }
 
         counter[0] = counter[0] + 1
         print("trained {} out of {} hyperparameter assignments, so far {} seconds".format(
             counter[0],total_evals, round(time.time()-start_time, 3)))
+
+    kwargs["filename_prefix"] = "only_last_cs/hparam_opt/"
+    for i in range(l):
+        kwargs["reg_strength"] = best["reg_strength"]
+        args = ExperimentParams(filename_suffix="_{}".format(i),**kwargs, **best["assignment"])
+        cur_valid_err, cur_test_err = train_classifier.main(args)
+        counter[0] = counter[0] + 1
+        
+    
     return best, reg_search_counters
 
 def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):
@@ -246,7 +276,6 @@ def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):
         counter[0] = counter[0] + 1
         print("trained {} out of {} hyperparameter assignments, so far {} seconds".format(
             counter[0],total_evals, round(time.time()-start_time, 3)))
-
 
     for i in range(n):
         args = ExperimentParams(filename_suffix="_{}".format(i),**kwargs,**best_assignment)

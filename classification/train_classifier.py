@@ -207,6 +207,7 @@ def log_groups(model, args, logging_file, groups=None):
     
 
 def init_logging(args):
+
     dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/" + args.dataset + "/"
     file_name = args.file_name() + ".txt"
 
@@ -269,14 +270,16 @@ def train_model(epoch, model, optimizer,
 
         output = model(x)
         loss = criterion(output, y)
-
         if args.sparsity_type == "none":
             reg_loss = loss
             regularization_term = 0
         else:
             regularization_groups = get_regularization_groups(model, args)
-            #log_groups(model, args, logging_file, regularization_groups)
+            
             regularization_term = regularization_groups.sum()
+
+            if args.reg_strength_multiple_of_loss and args.reg_strength == 0:
+                args.reg_strength = loss.data[0]*args.reg_strength_multiple_of_loss/regularization_term.data[0]
             reg_loss = loss + args.reg_strength * regularization_term
 
         reg_loss.backward()
@@ -293,7 +296,8 @@ def train_model(epoch, model, optimizer,
         #                                                           round(float(regularization_term),4), round(float(reg_loss),4)))
     regularization_groups = get_regularization_groups(model, args)
     log_groups(model, args, logging_file, regularization_groups)
-    
+
+
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
 

@@ -1,7 +1,7 @@
 import numpy as np
 import collections
 
-
+# for entropy regularization on the rhos
 def from_file(file_loc, rho_bound):
     backwards_lines = []
     with open(file_loc, "r") as f:

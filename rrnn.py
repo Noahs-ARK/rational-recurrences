@@ -685,26 +685,27 @@ class RRNNLayer(nn.Module):
         assert len(pattern) == len(n_out)
         num_cells = len(pattern)
         for i in range(num_cells):
-            one_cell = RRNNCell(
-                semiring=semiring,
-                n_in=n_in,
-                n_out=n_out[i],
-                pattern=pattern[i],
-                dropout=dropout,
-                rnn_dropout=rnn_dropout,
-                bidirectional=bidirectional,
-                use_tanh=use_tanh,
-                use_relu=use_relu,
-                use_selu=use_selu,
-                weight_norm=weight_norm,
-                index=index,
-                use_output_gate=use_output_gate,
-                use_rho=use_rho,
-                rho_sum_to_one=rho_sum_to_one,
-                use_last_cs=use_last_cs,
-                use_epsilon_steps=use_epsilon_steps
-            )
-            self.cells.append(one_cell)
+            if n_out[i] > 0:
+                one_cell = RRNNCell(
+                    semiring=semiring,
+                    n_in=n_in,
+                    n_out=n_out[i],
+                    pattern=pattern[i],
+                    dropout=dropout,
+                    rnn_dropout=rnn_dropout,
+                    bidirectional=bidirectional,
+                    use_tanh=use_tanh,
+                    use_relu=use_relu,
+                    use_selu=use_selu,
+                    weight_norm=weight_norm,
+                    index=index,
+                    use_output_gate=use_output_gate,
+                    use_rho=use_rho,
+                    rho_sum_to_one=rho_sum_to_one,
+                    use_last_cs=use_last_cs,
+                    use_epsilon_steps=use_epsilon_steps
+                )
+                self.cells.append(one_cell)
 
     def init_weights(self):
         for cell in self.cells:

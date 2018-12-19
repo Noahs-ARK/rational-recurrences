@@ -2,8 +2,11 @@
 def get_categories():
     #return ["apparel/", "automotive/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "gourmet_food/", "grocery/", "health_&_personal_care/", "jewelry_&_watches/", "kitchen_&_housewares/", "magazines/", "music/", "outdoor_living/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
     #return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
-    return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/", "books/", "original_mix/"]
-    #return ["books/", "original_mix/"]
+    return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/", "original_mix/","books/"]
+    #return ["original_mix/","books/"]
+    #return ["dvd/", "original_mix/"]
+    #return ["kitchen_&_housewares/", "books/"]
+
 
 class ExperimentParams:
     def __init__(self,
@@ -40,6 +43,7 @@ class ExperimentParams:
                  weight_decay=1e-6,
                  clip_grad=5,
                  reg_strength=0,
+                 reg_strength_multiple_of_loss=0,
                  num_epochs_debug=-1,
                  debug_run = False,
                  sparsity_type="none",
@@ -81,6 +85,7 @@ class ExperimentParams:
         self.weight_decay = weight_decay
         self.clip_grad = clip_grad
         self.reg_strength = reg_strength
+        self.reg_strength_multiple_of_loss = reg_strength_multiple_of_loss
         self.num_epochs_debug = num_epochs_debug
         self.debug_run = debug_run
         self.sparsity_type = sparsity_type
@@ -126,7 +131,7 @@ class ExperimentParams:
     def file_name(self):
 
         if self.sparsity_type == "none" and self.learned_structure:
-            sparsity_name = "learned"
+            sparsity_name = self.learned_structure
         else:
             sparsity_name = self.sparsity_type
         if self.debug_run:
@@ -136,6 +141,8 @@ class ExperimentParams:
             self.weight_decay, self.clip_grad, self.pattern, sparsity_name)
         if self.reg_strength > 0:
             name += "_regstr={:.3E}".format(self.reg_strength)
+        if self.reg_strength_multiple_of_loss:
+            name += "_regstrmultofloss={}".format(self.reg_strength_multiple_of_loss)
         if self.filename_suffix != "":
             name += self.filename_suffix
         if not self.gpu:

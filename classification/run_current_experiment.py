@@ -9,7 +9,7 @@ import entropy_regularization_experiments, l1_regularization_experiments
 def main():
     loaded_embedding = preload_embed()
     
-    exp_num = 6
+    exp_num = 9
 
     start_time = time.time()
     counter = [0]
@@ -137,6 +137,25 @@ def main():
                     filename_prefix="only_last_cs/hparam_opt/reg_str_search/",
                     dataset = "amazon_categories/" + category, seed=None,
                     loaded_embedding=loaded_embedding)
+                
+    # baseline for rho_entropy experiments
+    elif exp_num == 9:
+        categories = ["dvd/"]
+        patterns = ["1-gram", "2-gram"] #["4-gram", "3-gram", "2-gram", "1-gram"]
+        m = 20
+        n = 5
+        total_evals = len(categories) * (len(patterns) + 1) * (m+n)
+
+        for category in categories:
+            for pattern in patterns:
+                # train and eval the learned structure
+                args = train_m_then_n_models(m,n,counter, total_evals,start_time,
+                                             pattern = pattern, d_out="24",
+                                             filename_prefix="only_last_cs/hparam_opt/",
+                                             dataset = "amazon_categories/" + category, use_last_cs=True,
+                                             use_rho = False, seed=None, loaded_embedding=loaded_embedding)
+
+
         
 
 def preload_embed():

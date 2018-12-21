@@ -46,7 +46,6 @@ def extract_ngrams(rhos, rho_bound):
 
     return pattern, d_out, num_less_than_pointnine * 1.0 / sum(ngram_counts.values())
 
-
 if __name__ == "__main__":
     file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon/"
     file_name = "norms_adam_layers=1_lr=0.0010000_regstr=0.0100000_dout=256_dropout=0.2_pattern=4-gram_sparsity=rho_entropy.txt"

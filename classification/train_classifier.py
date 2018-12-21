@@ -209,7 +209,7 @@ def log_groups(model, args, logging_file, groups=None):
 def init_logging(args):
 
     dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/" + args.dataset + "/"
-    file_name = args.file_name() + ".txt"
+    filename = args.filename() + ".txt"
 
     if not os.path.exists(dir_path):
         os.mkdir(dir_path)
@@ -219,7 +219,7 @@ def init_logging(args):
 
     torch.set_printoptions(threshold=5000)
         
-    logging_file = open(dir_path + file_name, "w")
+    logging_file = open(dir_path + filename, "w")
 
     tmp = args.loaded_embedding
     args.loaded_embedding=True
@@ -227,7 +227,7 @@ def init_logging(args):
     args.loaded_embedding = tmp
     
     #print(args)
-    print("saving in {}".format(args.file_name()))
+    print("saving in {}".format(args.filename()))
     return logging_file
 
 

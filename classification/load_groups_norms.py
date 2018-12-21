@@ -60,8 +60,8 @@ def from_file(args = None, filename = None):
             ngram_counts[cur_ngram] += 1
     total_params = ngram_counts[1] + 2*ngram_counts[2] + 3*ngram_counts[3] + 4*ngram_counts[4]
     print("0,1,2,3,4 grams: {}, total params: {}, num out of order: {}, {}".format(str(ngram_counts), total_params, len(weirdos), best_valid))
-
-    return "{},{},{},{}".format(ngram_counts[1], ngram_counts[2], ngram_counts[3], ngram_counts[4])
+    
+    return "{},{},{},{}".format(ngram_counts[1], ngram_counts[2], ngram_counts[3], ngram_counts[4]), total_params
 
     
 

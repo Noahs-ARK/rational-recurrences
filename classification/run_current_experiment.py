@@ -3,13 +3,13 @@ import train_classifier
 import numpy as np
 import load_learned_ngrams
 import time
-import entropy_regularization_experiments, l1_regularization_experiments
+import regularization_search_experiments, l1_regularization_experiments
 
 
 def main():
     loaded_embedding = preload_embed()
     
-    exp_num = 9
+    exp_num = 6
 
     start_time = time.time()
     counter = [0]
@@ -76,19 +76,34 @@ def main():
     # first train with the regularizer, choose the best structure, then do hyperparameter search for that structure
     elif exp_num == 6:
         d_out = "24"
-        k = 25
+        k = 20
+        l = 5
         m = 20
         n = 5
-        total_evals = len(categories) * (m + n + k)
+        total_evals = len(categories) * (m + n + k + l)
+        all_reg_search_counters = []
         for category in categories:
-            best = l1_regularization_experiments.run(k,m,n, counter, total_evals, start_time,
-                                                     pattern = "4-gram", d_out = d_out, sparsity_type = "states",
-                                                     use_rho = False,
-                                                     filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/",
-                                                     seed=None,
-                                                     loaded_embedding=loaded_embedding, reg_strength = 0,
-                                                     dataset = "amazon_categories/" + category,
-                                                     reg_strength_multiple_of_loss = 0.01)
+            for reg_goal_params in [80, 60, 40, 20]:
+                best, reg_search_counters = regularization_search_experiments.train_k_then_l_models(
+                    k,l, counter, total_evals, start_time, reg_goal_params = reg_goal_params,
+                    pattern = "4-gram", d_out = d_out, sparsity_type = "states",
+                    use_rho = False,
+                    filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/",
+                    seed=None,
+                    loaded_embedding=loaded_embedding, reg_strength = 10,
+                    dataset = "amazon_categories/" + category)
+                
+                all_reg_search_counters.append(reg_search_counters)
+                
+                args = train_m_then_n_models(m,n,counter, total_evals, start_time,
+                                             pattern = best['learned_pattern'], d_out = best["learned_d_out"],
+                                             learned_structure = "l1-states-learned", reg_goal_params = reg_goal_params,
+                                             filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/",
+                                             seed = None, loaded_embedding = loaded_embedding,
+                                             dataset = "amazon_categories/" + category, use_rho = False)
+        print("search counters:")
+        for search_counter in all_reg_search_counters:
+            print(search_counter)        
             
     elif exp_num == 7:
         k = 25
@@ -130,7 +145,7 @@ def main():
         for d_out in ["24"]:#, "256"]:
             for category in categories:
                 # to learn the structure, and train with the regularizer
-                best, reg_search_counters = entropy_regularization_experiments.train_k_then_l_models_entropy_reg(
+                best, reg_search_counters = regularization_search_experiments.train_k_then_l_models(
                     k, l, counter, total_evals, start_time,
                     use_rho = True, pattern = "4-gram", sparsity_type = "rho_entropy",
                     rho_sum_to_one=True, reg_strength = 1, d_out=d_out,

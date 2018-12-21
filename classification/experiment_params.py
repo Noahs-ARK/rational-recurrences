@@ -2,9 +2,10 @@
 def get_categories():
     #return ["apparel/", "automotive/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "gourmet_food/", "grocery/", "health_&_personal_care/", "jewelry_&_watches/", "kitchen_&_housewares/", "magazines/", "music/", "outdoor_living/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
     #return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
-    return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/","books/", "original_mix/"]
-    #return ["original_mix/","books/"]
+    #return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/","books/", "original_mix/"]
+    
     #return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
+    return ["dvd/","original_mix/"]
     #return ["kitchen_&_housewares/", "books/"]
 
         
@@ -46,6 +47,7 @@ class ExperimentParams:
                  clip_grad=5,
                  reg_strength=0,
                  reg_strength_multiple_of_loss=0,
+                 reg_goal_params=False,
                  num_epochs_debug=-1,
                  debug_run = False,
                  sparsity_type="none",
@@ -88,6 +90,7 @@ class ExperimentParams:
         self.clip_grad = clip_grad
         self.reg_strength = reg_strength
         self.reg_strength_multiple_of_loss = reg_strength_multiple_of_loss
+        self.reg_goal_params = reg_goal_params
         self.num_epochs_debug = num_epochs_debug
         self.debug_run = debug_run
         self.sparsity_type = sparsity_type
@@ -130,7 +133,7 @@ class ExperimentParams:
         self.path = base_data_dir
         self.embedding = base_data_dir + "embedding"
 
-    def file_name(self):
+    def filename(self):
 
         if self.sparsity_type == "none" and self.learned_structure:
             sparsity_name = self.learned_structure
@@ -145,6 +148,8 @@ class ExperimentParams:
             name += "_regstr={:.3E}".format(self.reg_strength)
         if self.reg_strength_multiple_of_loss:
             name += "_regstrmultofloss={}".format(self.reg_strength_multiple_of_loss)
+        if self.reg_goal_params:
+            name += "_goalparams={}".format(self.reg_goal_params)
         if self.filename_suffix != "":
             name += self.filename_suffix
         if not self.gpu:

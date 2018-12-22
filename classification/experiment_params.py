@@ -5,8 +5,8 @@ def get_categories():
     #return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/","books/", "original_mix/"]
     
     #return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
-    return ["dvd/","original_mix/"]
-    #return ["kitchen_&_housewares/", "books/"]
+    #return ["dvd/","original_mix/"]
+    return ["kitchen_&_housewares/", "books/"]
 
         
 
@@ -48,6 +48,7 @@ class ExperimentParams:
                  reg_strength=0,
                  reg_strength_multiple_of_loss=0,
                  reg_goal_params=False,
+                 prox_step=False,
                  num_epochs_debug=-1,
                  debug_run = False,
                  sparsity_type="none",
@@ -91,6 +92,7 @@ class ExperimentParams:
         self.reg_strength = reg_strength
         self.reg_strength_multiple_of_loss = reg_strength_multiple_of_loss
         self.reg_goal_params = reg_goal_params
+        self.prox_step = prox_step
         self.num_epochs_debug = num_epochs_debug
         self.debug_run = debug_run
         self.sparsity_type = sparsity_type
@@ -150,6 +152,8 @@ class ExperimentParams:
             name += "_regstrmultofloss={}".format(self.reg_strength_multiple_of_loss)
         if self.reg_goal_params:
             name += "_goalparams={}".format(self.reg_goal_params)
+        if self.prox_step:
+            name += "_prox"
         if self.filename_suffix != "":
             name += self.filename_suffix
         if not self.gpu:

@@ -4,6 +4,7 @@ from run_current_experiment import get_k_sorted_hparams
 from experiment_params import ExperimentParams
 import train_classifier
 import numpy as np
+import time
 
 
 def search_reg_str_entropy(cur_assignments, kwargs):
@@ -57,23 +58,25 @@ def search_reg_str_entropy(cur_assignments, kwargs):
 
 def search_reg_str_l1(cur_assignments, kwargs):
     # the final number of params is within this amount of target
+    smallest_reg_str = 10**-9
+    largest_reg_str = 10**2
     distance_from_target = 10
     starting_reg_str = kwargs["reg_strength"]
     found_small_enough_reg_str = False
     # first search by checking that after 5 epochs, we aren't below where we want to be
     kwargs["max_epoch"] = 10
     counter = 0
-
+    
     while not found_small_enough_reg_str:
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
-        learned_d_out, num_params = load_groups_norms.from_file(args=args)
+        learned_d_out, num_params = load_groups_norms.from_file(args=args, prox=kwargs["prox_step"])
         
         if num_params < kwargs["reg_goal_params"] - distance_from_target:
             kwargs["reg_strength"] = kwargs["reg_strength"] / 2.0
-            if kwargs["reg_strength"] < 10**-7:
+            if kwargs["reg_strength"] < smallest_reg_str:
                 kwargs["reg_strength"] = starting_reg_str
                 return counter, "too_big_lr", cur_valid_err, learned_d_out
         else:
@@ -89,13 +92,13 @@ def search_reg_str_l1(cur_assignments, kwargs):
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
 
-        learned_d_out, num_params = load_groups_norms.from_file(args=args)
+        learned_d_out, num_params = load_groups_norms.from_file(args=args, prox=kwargs["prox_step"])
         if num_params < kwargs["reg_goal_params"] - distance_from_target:
             if too_large:
                 return counter + full_epoch_counter, "okay_lr", cur_valid_err, learned_d_out
             too_small = True
             kwargs["reg_strength"] = kwargs["reg_strength"] / 2.0
-            if kwargs["reg_strength"] < 10**-7:
+            if kwargs["reg_strength"] < smallest_reg_str:
                 kwargs["reg_strength"] = starting_reg_str
                 return counter + full_epoch_counter, "too_big_lr", cur_valid_err, learned_d_out
         elif num_params > kwargs["reg_goal_params"] + distance_from_target:
@@ -103,7 +106,7 @@ def search_reg_str_l1(cur_assignments, kwargs):
                 return counter + full_epoch_counter, "okay_lr", cur_valid_err, learned_d_out
             too_large = True
             kwargs["reg_strength"] = kwargs["reg_strength"] * 2.0
-            if kwargs["reg_strength"] > 10**4:
+            if kwargs["reg_strength"] > largest_reg_str:
                 kwargs["reg_strength"] = starting_reg_str
                 return counter + full_epoch_counter, "too_small_lr", cur_valid_err, learned_d_out
         else:

@@ -127,17 +127,8 @@ def eval_model(niter, model, valid_x, valid_y):
     model.train()
     return 1.0 - correct / cnt
 
-# this computes the group lasso penalty term
-def get_regularization_groups(model, args):
-    if args.sparsity_type == "wfsa":
-        embed_dim = model.emb_layer.n_d
-        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
-        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
-        l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
-        return l2_norm
-    elif args.sparsity_type == 'edges':
-        return model.encoder.rnn_lst[0].weight.norm(2, dim=0)
-    elif args.sparsity_type == 'states':
+
+def get_states_weights(model, args):
         embed_dim = model.emb_layer.n_d
         num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
         num_wfsas = int(args.d_out)
@@ -150,8 +141,22 @@ def get_regularization_groups(model, args):
             assert False, "This regularization is only implemented for 2-layer networks."
             
         # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
-        states = torch.cat((reshaped_weights[...,0:int(num_edges_in_wfsa/2)],reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
         
+        states = torch.cat((reshaped_weights[...,0:int(num_edges_in_wfsa/2)],reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
+        return states
+
+# this computes the group lasso penalty term
+def get_regularization_groups(model, args):
+    if args.sparsity_type == "wfsa":
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].k
+        reshaped_weights = model.encoder.rnn_lst[0].weight.view(embed_dim, args.d_out, num_edges_in_wfsa)
+        l2_norm = reshaped_weights.norm(2, dim=0).norm(2, dim=1)
+        return l2_norm
+    elif args.sparsity_type == 'edges':
+        return model.encoder.rnn_lst[0].weight.norm(2, dim=0)
+    elif args.sparsity_type == 'states':
+        states = get_states_weights(model, args)
         return states.norm(2,dim=0) # a num_wfsa by n-gram matrix
     elif args.sparsity_type == "rho_entropy":
         assert args.depth == 1, "rho_entropy regularization currently implemented for single layer networks"
@@ -245,6 +250,24 @@ def regularization_stop(args, model):
     else:
         return False
 
+# following https://en.wikipedia.org/wiki/Proximal_gradient_methods_for_learning#Group_lasso
+# w_g - args.reg_strength * (w_g / ||w_g||_2)
+def prox_step(model, args):
+    if args.sparsity_type == "states":
+
+        states = get_states_weights(model, args)
+        num_wfsas = states.shape[1]
+        num_states = states.shape[2]
+        for i in range(num_wfsas):
+            for j in range(num_states):
+                cur_group = states[:,i,j].data
+                if cur_group.norm(2) < args.reg_strength:
+                    cur_group.add_(-cur_group)
+                else:
+                    cur_group.add_(-args.reg_strength*cur_group/cur_group.norm(2))
+    else:
+        assert False, "haven't implemented anything else"
+    
 def train_model(epoch, model, optimizer,
                 train_x, train_y, valid_x, valid_y,
                 test_x, test_y,
@@ -270,6 +293,8 @@ def train_model(epoch, model, optimizer,
 
         output = model(x)
         loss = criterion(output, y)
+
+
         if args.sparsity_type == "none":
             reg_loss = loss
             regularization_term = 0
@@ -280,14 +305,19 @@ def train_model(epoch, model, optimizer,
 
             if args.reg_strength_multiple_of_loss and args.reg_strength == 0:
                 args.reg_strength = loss.data[0]*args.reg_strength_multiple_of_loss/regularization_term.data[0]
-            reg_loss = loss + args.reg_strength * regularization_term
 
+            if args.prox_step:
+                reg_loss = loss
+            else:
+                reg_loss = loss + args.reg_strength * regularization_term
+            
         reg_loss.backward()
-        
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip_grad)
-
-
         optimizer.step()
+
+        if args.prox_step:
+            prox_step(model, args)
+        
         if args.num_epochs_debug != -1 and epoch > args.num_epochs_debug:
             import pdb; pdb.set_trace()
 
@@ -296,8 +326,7 @@ def train_model(epoch, model, optimizer,
         #                                                           round(float(regularization_term),4), round(float(reg_loss),4)))
     regularization_groups = get_regularization_groups(model, args)
     log_groups(model, args, logging_file, regularization_groups)
-
-
+    import pdb; pdb.set_trace()
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
 

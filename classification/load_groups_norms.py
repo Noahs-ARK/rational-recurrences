@@ -31,12 +31,14 @@ def main():
                 
 
 
-def from_file(args = None, filename = None):
+def from_file(args = None, filename = None, prox = False):
     norms, best_valid = get_norms(args, filename)
 
 
-    
-    threshold = 0.1
+    if not prox:
+        threshold = 0.1
+    else:
+        threshold = 0.0001
     #threshold = min(norms[-1][:,0])
     learned_ngrams = norms > threshold
     ngram_counts = [0] * (len(learned_ngrams[0]) + 1)

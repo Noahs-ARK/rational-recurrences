@@ -71,7 +71,6 @@ def main():
                                     lr= 0.0066649117101292652, weight_decay= 3.2466515601088279e-06, clip_grad= 3.264546678251636)
             cur_valid_err, cur_test_err = train_classifier.main(args)
 
-
     # to learn with an L_1 regularizer
     # first train with the regularizer, choose the best structure, then do hyperparameter search for that structure
     elif exp_num == 6:
@@ -80,18 +79,21 @@ def main():
         l = 5
         m = 20
         n = 5
-        total_evals = len(categories) * (m + n + k + l)
+        reg_goal_params_list = [80, 60, 40, 20]
+        total_evals = len(categories) * (m + n + k + l) * len(reg_goal_params_list)
+        
         all_reg_search_counters = []
+
         for category in categories:
-            for reg_goal_params in [80, 60, 40, 20]:
+            for reg_goal_params in reg_goal_params_list:
                 best, reg_search_counters = regularization_search_experiments.train_k_then_l_models(
                     k,l, counter, total_evals, start_time, reg_goal_params = reg_goal_params,
                     pattern = "4-gram", d_out = d_out, sparsity_type = "states",
                     use_rho = False,
                     filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/",
                     seed=None,
-                    loaded_embedding=loaded_embedding, reg_strength = 10,
-                    dataset = "amazon_categories/" + category)
+                    loaded_embedding=loaded_embedding, reg_strength = 1,
+                    dataset = "amazon_categories/" + category, prox_step=True)
                 
                 all_reg_search_counters.append(reg_search_counters)
                 

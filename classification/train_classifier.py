@@ -129,21 +129,23 @@ def eval_model(niter, model, valid_x, valid_y):
 
 
 def get_states_weights(model, args):
-        embed_dim = model.emb_layer.n_d
-        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
-        num_wfsas = int(args.d_out)
 
-        reshaped_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
-        if len(model.encoder.rnn_lst) > 1:
-            reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
-            reshaped_weights = torch.cat((reshaped_weights, reshaped_second_layer_weights), 0)
-        elif len(model.encoder.rnn_lst) > 2:
-            assert False, "This regularization is only implemented for 2-layer networks."
+    embed_dim = model.emb_layer.n_d
+    num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+    num_wfsas = int(args.d_out)
+    
+    reshaped_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
+    if len(model.encoder.rnn_lst) > 1:
+        reshaped_second_layer_weights = model.encoder.rnn_lst[1].cells[0].weight.view(num_wfsas, num_wfsas, num_edges_in_wfsa)
+        reshaped_weights = torch.cat((reshaped_weights, reshaped_second_layer_weights), 0)
+    elif len(model.encoder.rnn_lst) > 2:
+        assert False, "This regularization is only implemented for 2-layer networks."
             
-        # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
-        
-        states = torch.cat((reshaped_weights[...,0:int(num_edges_in_wfsa/2)],reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
-        return states
+    # to stack the transition and self-loops, so e.g. states[...,0] contains the transition and self-loop weights
+
+    states = torch.cat((reshaped_weights[...,0:int(num_edges_in_wfsa/2)],
+                        reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]),0)
+    return states
 
 # this computes the group lasso penalty term
 def get_regularization_groups(model, args):
@@ -237,15 +239,9 @@ def init_logging(args):
 
 
 def regularization_stop(args, model):
-    if args.sparsity_type == "rho_entropy":
-        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
-        num_wfsas = int(args.d_out)
-        bias_final = model.encoder.rnn_lst[0].cells[0].bias_final
-        
-        sm = nn.Softmax(dim=2)
-        # the 1 in the line below is for non-bidirectional models, would be 2 for bidirectional
-        rho = sm(bias_final.view(1, num_wfsas, int(num_edges_in_wfsa/2)))
-        if rho.max(dim=2)[0].min().data[0] > .99:
+    if args.sparsity_type == "states" and args.prox_step:
+        states = get_states_weights(model, args)
+        if states.norm(2,dim=0).sum().data[0] == 0:
             return True
     else:
         return False
@@ -256,15 +252,33 @@ def prox_step(model, args):
     if args.sparsity_type == "states":
 
         states = get_states_weights(model, args)
-        num_wfsas = states.shape[1]
         num_states = states.shape[2]
+
+        embed_dim = model.emb_layer.n_d
+        num_edges_in_wfsa = model.encoder.rnn_lst[0].cells[0].k
+        num_wfsas = int(args.d_out)
+    
+        reshaped_weights = model.encoder.rnn_lst[0].cells[0].weight.view(embed_dim, num_wfsas, num_edges_in_wfsa)
+        if len(model.encoder.rnn_lst) > 1:
+            assert False, "This regularization is only implemented for 2-layer networks."
+            
+        first_weights = reshaped_weights[...,0:int(num_edges_in_wfsa/2)]
+        second_weights = reshaped_weights[...,int(num_edges_in_wfsa/2):num_edges_in_wfsa]
+
+
         for i in range(num_wfsas):
             for j in range(num_states):
                 cur_group = states[:,i,j].data
+                cur_first_weights = first_weights[:,i,j].data
+                cur_second_weights = second_weights[:,i,j].data
                 if cur_group.norm(2) < args.reg_strength:
-                    cur_group.add_(-cur_group)
+                    #cur_group.add_(-cur_group)
+                    cur_first_weights.add_(-cur_first_weights)
+                    cur_second_weights.add_(-cur_second_weights)
                 else:
-                    cur_group.add_(-args.reg_strength*cur_group/cur_group.norm(2))
+                    #cur_group.add_(-args.reg_strength*cur_group/cur_group.norm(2))
+                    cur_first_weights.add_(-args.reg_strength*cur_first_weights/cur_group.norm(2))
+                    cur_second_weights.add_(-args.reg_strength*cur_second_weights/cur_group.norm(2))
     else:
         assert False, "haven't implemented anything else"
     
@@ -326,7 +340,7 @@ def train_model(epoch, model, optimizer,
         #                                                           round(float(regularization_term),4), round(float(reg_loss),4)))
     regularization_groups = get_regularization_groups(model, args)
     log_groups(model, args, logging_file, regularization_groups)
-    import pdb; pdb.set_trace()
+
     valid_err = eval_model(niter, model, valid_x, valid_y)
     scheduler.step(valid_err)
 
@@ -352,7 +366,7 @@ def train_model(epoch, model, optimizer,
         test_err = eval_model(niter, model, test_x, test_y)
     else:
         unchanged += 1
-    if unchanged >= args.patience: # or regularization_stop(args, model):
+    if unchanged >= args.patience or regularization_stop(args, model):
         stop = True
 
     sys.stdout.write("\n")

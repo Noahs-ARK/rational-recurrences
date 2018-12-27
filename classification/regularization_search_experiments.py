@@ -79,6 +79,11 @@ def search_reg_str_l1(cur_assignments, kwargs):
             if kwargs["reg_strength"] < smallest_reg_str:
                 kwargs["reg_strength"] = starting_reg_str
                 return counter, "too_big_lr", cur_valid_err, learned_d_out
+        elif num_params == int(args.d_out) * 4:
+            kwargs["reg_strength"] = kwargs["reg_strength"] * 2.0
+            if kwargs["reg_strength"] > largest_reg_str:
+                kwargs["reg_strength"] = starting_reg_str
+                return counter + full_epoch_counter, "too_small_lr", cur_valid_err, learned_d_out            
         else:
             found_small_enough_reg_str = True
 

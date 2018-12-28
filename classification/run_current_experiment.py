@@ -90,17 +90,17 @@ def main():
                     k,l, counter, total_evals, start_time, reg_goal_params = reg_goal_params,
                     pattern = "4-gram", d_out = d_out, sparsity_type = "states",
                     use_rho = False,
-                    filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/",
+                    filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/add_reg_term_to_loss/",
                     seed=None,
-                    loaded_embedding=loaded_embedding, reg_strength = 1,
-                    dataset = "amazon_categories/" + category, prox_step=True)
+                    loaded_embedding=loaded_embedding, reg_strength = 10**-4,
+                    dataset = "amazon_categories/" + category)
                 
                 all_reg_search_counters.append(reg_search_counters)
                 
                 args = train_m_then_n_models(m,n,counter, total_evals, start_time,
                                              pattern = best['learned_pattern'], d_out = best["learned_d_out"],
                                              learned_structure = "l1-states-learned", reg_goal_params = reg_goal_params,
-                                             filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/",
+                                             filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/add_reg_term_to_loss/",
                                              seed = None, loaded_embedding = loaded_embedding,
                                              dataset = "amazon_categories/" + category, use_rho = False)
         print("search counters:")

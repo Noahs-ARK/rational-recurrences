@@ -234,7 +234,7 @@ def init_logging(args):
     args.loaded_embedding = tmp
     
     #print(args)
-    print("saving in {}".format(args.filename()))
+    print("saving in {}".format(args.dataset + args.filename()))
     return logging_file
 
 

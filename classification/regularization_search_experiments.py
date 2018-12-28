@@ -83,7 +83,11 @@ def search_reg_str_l1(cur_assignments, kwargs):
             kwargs["reg_strength"] = kwargs["reg_strength"] * 2.0
             if kwargs["reg_strength"] > largest_reg_str:
                 kwargs["reg_strength"] = starting_reg_str
-                return counter + full_epoch_counter, "too_small_lr", cur_valid_err, learned_d_out            
+                # it diverged, and for some reason the weights didn't drop
+                if cur_assignments["lr"] > .25 and cur_valid_err > .3:
+                    return counter, "too_big_lr", cur_valid_err, learned_d_out
+                else:
+                    return counter, "too_small_lr", cur_valid_err, learned_d_out            
         else:
             found_small_enough_reg_str = True
 
@@ -121,6 +125,10 @@ def search_reg_str_l1(cur_assignments, kwargs):
 
 def train_k_then_l_models(k,l,counter,total_evals,start_time,**kwargs):
     assert "reg_strength" in kwargs
+    if "prox_step" not in kwargs:
+        kwargs["prox_step"] = False
+    elif kwargs["prox_step"]:
+        assert False, "It's too unstable. books/all_cs_and_equal_rho/hparam_opt/structure_search/proximal_gradient too big then too small"
     file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/" + kwargs["dataset"]    
     best = {
         "assignment" : None,

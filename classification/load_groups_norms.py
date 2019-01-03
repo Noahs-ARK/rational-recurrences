@@ -17,9 +17,9 @@ def main():
     #                        dropout= 0.4703, embed_dropout= 0.0805,rnn_dropout= 0.0027,
     #                        lr= 7.285E-02, weight_decay= 7.05E-06, clip_grad= 1.52, sparsity_type = "states",
     #                        reg_strength_multiple_of_loss = 1)
-    file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon_categories/" + "original_mix/"
-    file_base += "all_cs_and_equal_rho/hparam_opt/structure_search/"
-    filename_endings = ["*regstrmultofloss=0.01_*"]
+    file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon_categories/" + "kitchen_&_housewares/"
+    file_base += "all_cs_and_equal_rho/hparam_opt/structure_search/add_reg_term_to_loss/"
+    filename_endings = ["*sparsity=states*goalparams=60_*"]
     for filename_ending in filename_endings:
         filenames = glob.glob(file_base + filename_ending)
         for filename in filenames:

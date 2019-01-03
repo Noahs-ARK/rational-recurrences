@@ -199,7 +199,7 @@ def hparam_sample(lr_bounds = [1.5, 10**-3]):
     return assignments
 
 #orders them in increasing order of lr
-def get_k_sorted_hparams(k,lr_lower_bound=1.5, lr_upper_bound=10**-3):
+def get_k_sorted_hparams(k,lr_upper_bound=1.5, lr_lower_bound=10**-3):
     all_assignments = []
     
     for i in range(k):

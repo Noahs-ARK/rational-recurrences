@@ -7,8 +7,8 @@ def get_categories():
     #return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
     #return ["dvd/","original_mix/"]
     #return ["kitchen_&_housewares/", "books/"]
-    return ["kitchen_&_housewares/"]
-    #return ["books/"]
+    #return ["kitchen_&_housewares/"]
+    return ["books/"]
 
         
 

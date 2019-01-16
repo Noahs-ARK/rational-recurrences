@@ -4,11 +4,11 @@ def get_categories():
     #return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
     #return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/","books/", "original_mix/"]
     
-    #return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
+    return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
     #return ["dvd/","original_mix/"]
     #return ["kitchen_&_housewares/", "books/"]
     #return ["kitchen_&_housewares/"]
-    return ["books/"]
+    #return ["books/"]
 
         
 

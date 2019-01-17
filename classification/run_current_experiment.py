@@ -59,17 +59,6 @@ def main():
                                   filename_prefix="all_cs_and_equal_rho/hparam_opt/",
                                   dataset = "amazon_categories/" + category, use_rho = False, seed=None,
                                   loaded_embedding = loaded_embedding)
-    elif exp_num == 4:
-        pattern = "4-gram"
-        category = "original_mix/"
-        for i in range(5):
-            args = ExperimentParams(filename_suffix="_{}".format(i),pattern=pattern, d_out="24", depth = 1,
-                                    filename_prefix = "all_cs_and_equal_rho/hparam_opt/",
-                                    dataset = "amazon_categories/" + category, use_rho = False, seed=None,
-                                    loaded_embedding = loaded_embedding,
-                                    dropout= 0.042996529686671336, embed_dropout= 0.25217159045084286,rnn_dropout= 0.342275155827923,
-                                    lr= 0.0066649117101292652, weight_decay= 3.2466515601088279e-06, clip_grad= 3.264546678251636)
-            cur_valid_err, cur_test_err = train_classifier.main(args)
 
     # to learn with an L_1 regularizer
     # first train with the regularizer, choose the best structure, then do hyperparameter search for that structure
@@ -92,7 +81,7 @@ def main():
                     use_rho = False,
                     filename_prefix="all_cs_and_equal_rho/hparam_opt/structure_search/add_reg_term_to_loss/",
                     seed=None,
-                    loaded_embedding=loaded_embedding, reg_strength = 10**-4,
+                    loaded_embedding=loaded_embedding, reg_strength = 10**-6,
                     dataset = "amazon_categories/" + category)
                 
                 all_reg_search_counters.append(reg_search_counters)
@@ -138,11 +127,11 @@ def main():
         for search_counter in all_reg_search_counters:
             print(search_counter)
 
+    # some rho_entropy experiments
     elif exp_num == 8:
         k = 20
         l = 5
         total_evals = len(categories) * (k + l)
-
         
         for d_out in ["24"]:#, "256"]:
             for category in categories:

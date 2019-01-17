@@ -4,11 +4,11 @@ def get_categories():
     #return ["apparel/", "baby/", "beauty/", "books/", "camera_&_photo/", "cell_phones_&_service/", "computer_&_video_games/", "dvd/", "electronics/", "health_&_personal_care/", "kitchen_&_housewares/", "magazines/", "music/", "software/", "sports_&_outdoors/", "toys_&_games/", "video/"]
     #return ["camera_&_photo/","apparel/","health_&_personal_care/", "toys_&_games/", "kitchen_&_housewares/", "dvd/","books/", "original_mix/"]
     
-    return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
+    #return ["kitchen_&_housewares/","dvd/", "books/", "original_mix/"]
     #return ["dvd/","original_mix/"]
     #return ["kitchen_&_housewares/", "books/"]
     #return ["kitchen_&_housewares/"]
-    #return ["books/"]
+    return ["books/"]
 
         
 
@@ -105,30 +105,8 @@ class ExperimentParams:
         
         self.current_experiment()
 
-    # overwrites the default values with the current experiment
+    # adjusts the default values with the current experiment
     def current_experiment(self):
-
-        #self.lr = 0.4277069
-        #self.trainer = "sgd"
-        #self.reg_strength = 0.0005 #0.0032028
-        #self.weight_decay = 0
-        #self.gpu = True
-        #self.d_out = "64,64,64,64" #could total 36
-        #self.depth = 1
-        #self.num_epochs_debug = 10
-        #self.lr=0.4856506
-        #self.reg_strength=0.00001
-        #self.rnn_dropout = 0
-        #self.embed_dropout = 0
-
-        #self.debug_run = True
-        #self.pattern = "1-gram,2-gram,3-gram,4-gram"
-        #self.use_rho = False
-        #self.use_last_cs = True
-        #self.batch_size = 16
-
-        #self.sparsity_type = "none" # possible values: edges, wfsa, none, states, rho_entropy
-        
         base_data_dir = "/home/jessedd/data/"
         if self.debug_run:
             base_data_dir += "amazon_debug/"
@@ -138,7 +116,6 @@ class ExperimentParams:
         self.embedding = base_data_dir + "embedding"
 
     def filename(self):
-
         if self.sparsity_type == "none" and self.learned_structure:
             sparsity_name = self.learned_structure
         else:

@@ -1,5 +1,4 @@
 import sys
-
 from experiment_params import ExperimentParams
 import numpy as np
 import glob
@@ -8,33 +7,29 @@ np.set_printoptions(edgeitems=3,infstr='inf',
                     linewidth=9999, nanstr='nan', precision=5,
                     suppress=True, threshold=1000, formatter=None)
 
-
 def main():
+    l1_or_entropy = "l1"
 
-    #args = ExperimentParams(pattern="4-gram", d_out="24", depth = 1,
-    #                        filename_prefix = "all_cs_and_equal_rho/",
-    #                        dataset = "amazon_categories/original_mix/", use_rho = False, seed=None,
-    #                        dropout= 0.4703, embed_dropout= 0.0805,rnn_dropout= 0.0027,
-    #                        lr= 7.285E-02, weight_decay= 7.05E-06, clip_grad= 1.52, sparsity_type = "states",
-    #                        reg_strength_multiple_of_loss = 1)
+    if l1_or_entropy == "l1":
+        l1_example()
+    elif l1_or_entropy == "entropy":
+        entropy_example()
+
+
+# the next few functions are for l1-regularized models, below that are the entropy regularization models
+
+def l1_example():
     file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon_categories/" + "books/"
     file_base += "all_cs_and_equal_rho/hparam_opt/structure_search/add_reg_term_to_loss/"
     filename_endings = ["*sparsity=states*goalparams=80*"]
     for filename_ending in filename_endings:
         filenames = glob.glob(file_base + filename_ending)
-        #import pdb; pdb.set_trace()
+
         for filename in filenames:
             from_file(filename=filename)
-            #try:
-            #
-            #except:
-            #    continue
-                
 
-
-def from_file(args = None, filename = None, prox = False):
+def l1_group_norms(args = None, filename = None, prox = False):
     norms, best_valid = get_norms(args, filename)
-
 
     if not prox:
         threshold = 0.1
@@ -66,19 +61,13 @@ def from_file(args = None, filename = None, prox = False):
     
     return "{},{},{},{}".format(ngram_counts[1], ngram_counts[2], ngram_counts[3], ngram_counts[4]), total_params
 
-    
 
-    
 def get_norms(args, filename):
     if args:
         path = "/home/jessedd/projects/rational-recurrences/classification/logging/" + args.dataset
         path += args.filename() + ".txt"
     else:
         path = filename
-
-
-    #if "loss=0.01_1.txt" in path:
-    #    import pdb; pdb.set_trace()
         
     best_valid = None
     lines = []
@@ -105,13 +94,10 @@ def get_norms(args, filename):
         for line in lines:
             if "best_valid" in line:
                 best_valid = line.strip()
-            #if "Epoch=85" in line:
-            #    import pdb; pdb.set_trace()
 
             split_line = [x for x in line.split(" ") if x != '']
 
             if len(split_line) != len_groups and prev_line_was_data:
-                #print(line)
                 prev_line_was_data = False
                 vals.append(wfsas)
 
@@ -123,23 +109,73 @@ def get_norms(args, filename):
                         edges.append(float(item))
                     except:
                         continue
-                #print(edges)
-                #print(line)
                 if len(edges) == len_groups:
                     prev_line_was_data = True
                     wfsas.append(edges)
 
-
         vals = vals[-1]
         vals = np.asarray(vals)
 
-
         assert vals.shape[0] == 24 # this is the number of WFSAs in the model
-        assert vals.shape[1] == len_groups # this is the number of edges in each WFSA
-        
-            
+        assert vals.shape[1] == len_groups # this is the number of edges in each WFSA            
                 
     return vals, best_valid
+
+
+
+
+
+# these functions are for loading the rhos from entropy regularized models
+
+
+def entropy_example():
+    file_base = "/home/jessedd/projects/rational-recurrences/classification/logging/amazon/"
+    file_name = "norms_adam_layers=1_lr=0.0010000_regstr=0.0100000_dout=256_dropout=0.2_pattern=4-gram_sparsity=rho_entropy.txt"
+    from_file(file_base + file_name)
+
+
+def entropy_rhos(file_loc, rho_bound):
+    backwards_lines = []
+    with open(file_loc, "r") as f:
+        lines = f.readlines()
+
+        found_var = False
+        for i in range(len(lines)):
+            if i == 0:
+                continue
+            if "Variable containing:" in lines[-i]:
+                break
+            if found_var:
+                backwards_lines.append(lines[-i].strip())
+            if "[torch.cuda.FloatTensor of size" in lines[-i]:
+                found_var = True
+
+    backwards_lines = backwards_lines[:len(backwards_lines)-1]
+
+
+    return extract_ngrams(backwards_lines, rho_bound)
+
+
+def extract_ngrams(rhos, rho_bound):
+    ngram_counts = collections.Counter()
+    num_less_than_pointnine = 0
+    for rho_line in rhos:
+        cur_rho_line = np.fromstring(rho_line, dtype=float, sep = " ")
+        if max(cur_rho_line) < rho_bound:
+            num_less_than_pointnine += 1
+        cur_ngram = np.argmax(cur_rho_line)
+        ngram_counts[cur_ngram] = ngram_counts[cur_ngram] + 1
+
+    pattern = ""
+    d_out = ""
+    for i in range(4):
+        if ngram_counts[i] > 0:
+            pattern = pattern + "{}-gram,".format(i+1)
+            d_out = d_out + "{},".format(ngram_counts[i])
+    pattern = pattern[:len(pattern)-1]
+    d_out = d_out[:len(d_out)-1]
+
+    return pattern, d_out, num_less_than_pointnine * 1.0 / sum(ngram_counts.values())
 
 
 if __name__ == "__main__":

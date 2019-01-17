@@ -3,7 +3,7 @@ import train_classifier
 import numpy as np
 import load_learned_ngrams
 import time
-import regularization_search_experiments, l1_regularization_experiments
+import regularization_search_experiments
 
 
 def main():

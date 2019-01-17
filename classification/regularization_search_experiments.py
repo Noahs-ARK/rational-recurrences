@@ -1,5 +1,4 @@
-import load_learned_ngrams
-import load_groups_norms
+import load_learned_structure
 from run_current_experiment import get_k_sorted_hparams
 from experiment_params import ExperimentParams
 import train_classifier
@@ -20,7 +19,7 @@ def search_reg_str_entropy(cur_assignments, kwargs):
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
-        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(
+        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_structure.entropy_rhos(
             file_base + args.filename() + ".txt", rho_bound)
         print("fraction under {}: {}".format(rho_bound,frac_under_pointnine))
         print("")
@@ -40,7 +39,7 @@ def search_reg_str_entropy(cur_assignments, kwargs):
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         
-        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(
+        learned_pattern, learned_d_out, frac_under_pointnine = load_learned_structure.entropy_rhos(
             file_base + args.filename() + ".txt", rho_bound)
         print("fraction under {}: {}".format(rho_bound,frac_under_pointnine))
         print("")
@@ -75,7 +74,7 @@ def search_reg_str_l1(cur_assignments, kwargs):
         counter += 1
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
-        learned_d_out, num_params = load_groups_norms.from_file(args=args, prox=kwargs["prox_step"])
+        learned_d_out, num_params = load_learned_structure.l1_group_norms(args=args, prox=kwargs["prox_step"])
         
         if num_params < kwargs["reg_goal_params"] - distance_from_target:
             if too_large:
@@ -161,7 +160,7 @@ def train_k_then_l_models(k,l,counter,total_evals,start_time,**kwargs):
             args = ExperimentParams(**kwargs, **cur_assignments)
             cur_valid_err, cur_test_err = train_classifier.main(args)
         
-            learned_pattern, learned_d_out, frac_under_pointnine = load_learned_ngrams.from_file(
+            learned_pattern, learned_d_out, frac_under_pointnine = load_learned_structure.l1_group_norms(
                 file_base + args.filename() + ".txt", .9)
         
         if cur_valid_err < best["valid_err"]:

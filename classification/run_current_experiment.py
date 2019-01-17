@@ -23,24 +23,17 @@ def main():
         train_classifier.main(args)
 
 
-    # finding the largest learning rate that doesn't diverge
+    # finding the largest learning rate that doesn't diverge, for evaluating the claims in this paper:
+    # The Marginal Value of Adaptive Gradient Methods in Machine Learning
+    # https://arxiv.org/abs/1705.08292
+    # conclusion: their results don't hold for our models.
     elif exp_num == 1:
         lrs = np.linspace(2,0.1, 10)
         for lr in lrs:
             args = ExperimentParams(pattern="4-gram", d_out="256", trainer="sgd", max_epoch=3, lr=lr, filename_prefix="lr_tuning/")
             train_classifier.main(args)
-    # for testing the effect of batch size. conclusion: larger batches require larger learning rates.
-    elif exp_num == 2:
-        start_time = time.time()
-        batch_size = 64
-        for category in ["toys_&_games/", "apparel/", "health_&_personal_care/"]:
-            
-            args = ExperimentParams(pattern="4-gram", d_out="24", depth = 1, filename_prefix="only_last_cs/hparam_opt/",
-                                    use_last_cs=True, dataset = "amazon_categories/" + category, use_rho=False,
-                                    batch_size=batch_size) # seed = None
-            train_classifier.main(args)
-        print("it took {} seconds with batch_size = {}".format(time.time() - start_time, batch_size))
-        
+
+    # baseline experiments for 1-gram up to 4-gram models
     elif exp_num == 3:
         patterns = ["4-gram", "3-gram", "2-gram", "1-gram"]
         m = 20
@@ -95,37 +88,7 @@ def main():
         print("search counters:")
         for search_counter in all_reg_search_counters:
             print(search_counter)        
-            
-    elif exp_num == 7:
-        k = 25
-        m = 20
-        n = 5
-        total_evals = len(categories) * (k + m + n)
-        all_reg_search_counters = []
-        
-        for d_out in ["24"]:#, "256"]:
-            for category in categories:
-                # to learn the structure
-                best, reg_search_counters = train_k_models_entropy_reg(k, counter, total_evals, start_time,
-                                                                       use_rho = True, pattern = "4-gram", sparsity_type = "rho_entropy",
-                                                                       rho_sum_to_one=True, reg_strength = 1, d_out=d_out,
-                                                                       filename_prefix="only_last_cs/hparam_opt/reg_str_search/",
-                                                                       dataset = "amazon_categories/" + category, seed=None,
-                                                                       loaded_embedding=loaded_embedding)
-                
-                all_reg_search_counters.append(reg_search_counters)
 
-
-                # train and eval the learned structure
-                args = train_m_then_n_models(m,n,counter, total_evals,start_time,
-                                             pattern = best["learned_pattern"], d_out=best["learned_d_out"],
-                                             filename_prefix="only_last_cs/hparam_opt/",
-                                             dataset = "amazon_categories/" + category, use_last_cs=True,
-                                             learned_structure="entropy-learned",
-                                             use_rho = False, seed=None, loaded_embedding=loaded_embedding)
-        print("search counters:")
-        for search_counter in all_reg_search_counters:
-            print(search_counter)
 
     # some rho_entropy experiments
     elif exp_num == 8:
@@ -161,7 +124,7 @@ def main():
                                              dataset = "amazon_categories/" + category, use_last_cs=True,
                                              use_rho = False, seed=None, loaded_embedding=loaded_embedding)
 
-
+    elif exp_num == 10:
         
 
 def preload_embed():
@@ -200,8 +163,9 @@ def get_k_sorted_hparams(k,lr_upper_bound=1.5, lr_lower_bound=10**-3):
 def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):
     best_assignment = None
     best_valid_err = 1
+    all_assignments = get_k_sorted_hparams(m)
     for i in range(m):
-        cur_assignments = hparam_sample()
+        cur_assignments = all_assignments[i]
         args = ExperimentParams(**kwargs, **cur_assignments)
         cur_valid_err, cur_test_err = train_classifier.main(args)
         if cur_valid_err < best_valid_err:

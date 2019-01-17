@@ -1,7 +1,6 @@
 from experiment_params import ExperimentParams, get_categories
 import train_classifier
 import numpy as np
-import load_learned_ngrams
 import time
 import regularization_search_experiments
 
@@ -9,7 +8,7 @@ import regularization_search_experiments
 def main():
     loaded_embedding = preload_embed()
     
-    exp_num = 6
+    exp_num = 10
 
     start_time = time.time()
     counter = [0]
@@ -123,9 +122,25 @@ def main():
                                              filename_prefix="only_last_cs/hparam_opt/",
                                              dataset = "amazon_categories/" + category, use_last_cs=True,
                                              use_rho = False, seed=None, loaded_embedding=loaded_embedding)
-
+                
+    # baseline experiments for l1 regularization, on sst. very similar to exp_num 3
     elif exp_num == 10:
-        
+        patterns = ["4-gram", "3-gram", "2-gram", "1-gram"]
+        m = 20
+        n = 5
+        total_evals = m * n
+        for pattern in patterns:
+            train_m_then_n_models(m,n,counter, total_evals, start_time,
+                                  pattern=pattern, d_out = "24", depth = 1, filename_prefix="all_cs_and_equal_rho/hparam_opt/",
+                                  dataset = "sst/", use_rho=False,
+                                  seed=None, loaded_embedding=loaded_embedding)
+
+        train_m_then_n_models(m,n,counter, total_evals, start_time,
+                              pattern="1-gram,2-gram,3-gram,4-gram", d_out = "6,6,6,6", depth = 1,
+                              filename_prefix="all_cs_and_equal_rho/hparam_opt/",
+                              dataset = "sst/", use_rho = False, seed=None,
+                              loaded_embedding = loaded_embedding)
+
 
 def preload_embed():
     start = time.time()

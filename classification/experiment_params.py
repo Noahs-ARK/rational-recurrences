@@ -57,7 +57,10 @@ class ExperimentParams:
                  filename_prefix="",
                  filename_suffix="",
                  dataset="amazon/",
-                 learned_structure=False
+                 learned_structure=False,
+                 logging_dir="/home/jessedd/projects/rational-recurrences/classification/logging/",
+                 base_data_dir="/home/jessedd/data/",
+                 output_dir=None
     ):
         self.path = path 
         self.embedding = embedding
@@ -102,12 +105,15 @@ class ExperimentParams:
         self.filename_suffix = filename_suffix
         self.dataset = dataset
         self.learned_structure = learned_structure
+        self.logging_dir = logging_dir
+        self.base_data_dir = base_data_dir
+        self.output_dir = output_dir
         
         self.current_experiment()
 
     # adjusts the default values with the current experiment
     def current_experiment(self):
-        base_data_dir = "/home/jessedd/data/"
+        base_data_dir = self.base_data_dir
         if self.debug_run:
             base_data_dir += "amazon_debug/"
         else:

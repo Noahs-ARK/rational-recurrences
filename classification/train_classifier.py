@@ -8,6 +8,8 @@ import torch.optim as optim
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from tensorboardX import SummaryWriter
+
 sys.path.append("..")
 import classification.dataloader as dataloader
 import classification.modules as modules
@@ -215,7 +217,7 @@ def log_groups(model, args, logging_file, groups=None):
 
 def init_logging(args):
 
-    dir_path = "/home/jessedd/projects/rational-recurrences/classification/logging/" + args.dataset + "/"
+    dir_path = args.logging_dir + args.dataset + "/"
     filename = args.filename() + ".txt"
 
     if not os.path.exists(dir_path):
@@ -368,6 +370,7 @@ def train_model(epoch, model, optimizer,
         unchanged += 1
     if unchanged >= args.patience or regularization_stop(args, model):
         stop = True
+        
 
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -441,6 +444,11 @@ def main(args):
     best_valid = 1e+8
     test_err = 1e+8
     unchanged = 0
+    writer = None
+
+    if args.output_dir is not None:
+        writer = SummaryWriter(os.path.join(args.output_dir, args.dataset))
+
     for epoch in range(args.max_epoch):
         np.random.shuffle(random_perm)
         train_x, train_y = dataloader.create_batches(
@@ -461,13 +469,33 @@ def main(args):
             best_valid, test_err,
             unchanged, scheduler, logging_file
         )
-
+        
+        if writer is not None:
+            for name, param in model.named_parameters():
+                writer.add_scalar("parameter_mean/" + name,
+                                  param.data.mean(),
+                                  epoch)
+                writer.add_scalar("parameter_std/" + name, param.data.std(), epoch)
+                if param.grad is not None:
+                    writer.add_scalar("gradient_mean/" + name,
+                                      param.grad.data.mean(),
+                                      epoch)
+                    writer.add_scalar("gradient_std/" + name,
+                                      param.grad.data.std(),
+                                      epoch)
+        if writer is not None:
+            writer.add_scalar("loss/best_valid", best_valid, epoch)
+        
         if stop:
             break
 
         if args.lr_decay > 0:
             optimizer.param_groups[0]["lr"] *= args.lr_decay
 
+
+    if writer is not None:
+       writer.add_scalar("loss/best_valid", best_valid, epoch)
+       writer.close()
 
     sys.stdout.write("best_valid: {:.6f}\n".format(best_valid))
     sys.stdout.write("test_err: {:.6f}\n".format(test_err))

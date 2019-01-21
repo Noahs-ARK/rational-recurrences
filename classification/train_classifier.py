@@ -286,8 +286,7 @@ def prox_step(model, args):
     
 def train_model(epoch, model, optimizer,
                 train_x, train_y, valid_x, valid_y,
-                test_x, test_y,
-                best_valid, test_err, unchanged, scheduler, logging_file):
+                best_valid, unchanged, scheduler, logging_file):
     model.train()
     args = model.args
     N = len(train_x)
@@ -365,7 +364,6 @@ def train_model(epoch, model, optimizer,
     if valid_err < best_valid:
         unchanged = 0
         best_valid = valid_err
-        test_err = eval_model(niter, model, test_x, test_y)
     else:
         unchanged += 1
     if unchanged >= args.patience or regularization_stop(args, model):
@@ -374,11 +372,10 @@ def train_model(epoch, model, optimizer,
 
     sys.stdout.write("\n")
     sys.stdout.flush()
-    return best_valid, unchanged, test_err, stop
+    return best_valid, unchanged, stop
 
 
-def main(args):
-    logging_file = init_logging(args)
+def main_test(args):
     if args.seed:
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -400,6 +397,15 @@ def main(args):
     nclasses = max(train_Y) + 1
     random_perm = list(range(len(train_X)))
     np.random.shuffle(random_perm)
+    train_x, train_y = dataloader.create_batches(
+        train_X, train_Y,
+        args.batch_size,
+        emb_layer.word2id,
+        sort=True,
+        gpu=args.gpu,
+        sos=SOS,
+        eos=EOS
+    )
     valid_x, valid_y = dataloader.create_batches(
         valid_X, valid_Y,
         args.batch_size,
@@ -411,6 +417,67 @@ def main(args):
     )
     test_x, test_y = dataloader.create_batches(
         test_X, test_Y,
+        args.batch_size,
+        emb_layer.word2id,
+        sort=True,
+        gpu=args.gpu,
+        sos=SOS,
+        eos=EOS
+    )
+
+    model = Model(args, emb_layer, nclasses)
+
+    if args.gpu:
+        state_dict = torch.load(args.input_model)
+    else:
+        state_dict = torch.load(args.input_model, map_location=lambda storage, loc: storage)
+
+    model.load_state_dict(state_dict)
+
+    if args.gpu:
+        model.to_cuda(model)
+
+    if args.gpu:
+        model.cuda()
+
+
+    train_err = eval_model(0, model, train_x, train_y)
+    valid_err = eval_model(0, model, valid_x, valid_y)
+    test_err = eval_model(0, model, test_x, test_y)
+
+    sys.stdout.write("train_err: {:.6f}\n".format(train_err))
+    sys.stdout.write("valid_err: {:.6f}\n".format(valid_err))
+    sys.stdout.write("test_err: {:.6f}\n".format(test_err))
+    sys.stdout.flush()
+    return train_err, valid_err, test_err
+
+
+
+def main(args):
+    logging_file = init_logging(args)
+    if args.seed:
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+    train_X, train_Y, valid_X, valid_Y, test_X, _ = dataloader.read_SST(args.path)
+    data = train_X + valid_X + test_X
+
+    if args.loaded_embedding:
+        embs = args.loaded_embedding
+    else:
+        embs = dataloader.load_embedding(args.embedding)
+    emb_layer = modules.EmbeddingLayer(
+        data,
+        fix_emb=args.fix_embedding,
+        sos=SOS,
+        eos=EOS,
+        embs=embs
+    )
+
+    nclasses = max(train_Y) + 1
+    random_perm = list(range(len(train_X)))
+    np.random.shuffle(random_perm)
+    valid_x, valid_y = dataloader.create_batches(
+        valid_X, valid_Y,
         args.batch_size,
         emb_layer.word2id,
         sort=True,
@@ -442,12 +509,8 @@ def main(args):
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=args.lr_schedule_decay, patience=args.lr_patience, verbose=True)
 
     best_valid = 1e+8
-    test_err = 1e+8
     unchanged = 0
-    writer = None
 
-    if args.output_dir is not None:
-        writer = SummaryWriter(os.path.join(args.output_dir, args.dataset))
 
     for epoch in range(args.max_epoch):
         np.random.shuffle(random_perm)
@@ -461,31 +524,30 @@ def main(args):
             sos=SOS,
             eos=EOS
         )
-        best_valid, unchanged, test_err, stop = train_model(
+        best_valid, unchanged, stop = train_model(
             epoch, model, optimizer,
             train_x, train_y,
             valid_x, valid_y,
-            test_x, test_y,
-            best_valid, test_err,
+            best_valid,
             unchanged, scheduler, logging_file
         )
-        
-        if writer is not None:
-            for name, param in model.named_parameters():
-                writer.add_scalar("parameter_mean/" + name,
-                                  param.data.mean(),
-                                  epoch)
-                writer.add_scalar("parameter_std/" + name, param.data.std(), epoch)
-                if param.grad is not None:
-                    writer.add_scalar("gradient_mean/" + name,
-                                      param.grad.data.mean(),
-                                      epoch)
-                    writer.add_scalar("gradient_std/" + name,
-                                      param.grad.data.std(),
-                                      epoch)
-        if writer is not None:
-            writer.add_scalar("loss/best_valid", best_valid, epoch)
-        
+
+        # if writer is not None:
+        #     for name, param in model.named_parameters():
+        #         writer.add_scalar("parameter_mean/" + name,
+        #                           param.data.mean(),
+        #                           epoch)
+        #         writer.add_scalar("parameter_std/" + name, param.data.std(), epoch)
+        #         if param.grad is not None:
+        #             writer.add_scalar("gradient_mean/" + name,
+        #                               param.grad.data.mean(),
+        #                               epoch)
+        #             writer.add_scalar("gradient_std/" + name,
+        #                               param.grad.data.std(),
+        #                               epoch)
+        # if writer is not None:
+        #     writer.add_scalar("loss/best_valid", best_valid, epoch)
+
         if stop:
             break
 
@@ -493,17 +555,23 @@ def main(args):
             optimizer.param_groups[0]["lr"] *= args.lr_decay
 
 
-    if writer is not None:
-       writer.add_scalar("loss/best_valid", best_valid, epoch)
-       writer.close()
+    # if writer is not None:
+    #    writer.add_scalar("loss/best_valid", best_valid, epoch)
+    #    writer.close()
+
+    if args.output_dir is not None:
+        of = os.path.join(args.output_dir, "best_model.pth")
+        print("Writing model to", of)
+        torch.save(model.state_dict(), of)
+
 
     sys.stdout.write("best_valid: {:.6f}\n".format(best_valid))
-    sys.stdout.write("test_err: {:.6f}\n".format(test_err))
+#    sys.stdout.write("test_err: {:.6f}\n".format(test_err))
     sys.stdout.flush()
     logging_file.write("best_valid: {:.6f}\n".format(best_valid))
-    logging_file.write("test_err: {:.6f}\n".format(test_err))
+#    logging_file.write("test_err: {:.6f}\n".format(test_err))
     logging_file.close()
-    return best_valid, test_err
+    return best_valid#, test_err
 
 
 

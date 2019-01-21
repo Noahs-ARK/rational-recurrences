@@ -1,12 +1,17 @@
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+import sys
+import os
 from experiment_params import ExperimentParams, get_categories
 import train_classifier
 import numpy as np
 import time
 import regularization_search_experiments
+import experiment_tools
 
 
-def main():
-    loaded_embedding = preload_embed()
+def main(argv):
+    loaded_embedding = experiment_tools.preload_embed(os.path.join(argv.base_dir,argv.dataset))
     
     exp_num = 0
 
@@ -17,15 +22,18 @@ def main():
     
     # a basic experiment
     if exp_num == 0:
-        args = ExperimentParams(pattern = "1-gram,2-gram,3-gram,4-gram", d_out = "0,4,0,2",
-                                learned_structure = "l1-states-learned", reg_goal_params = 20,
-                                filename_prefix="all_cs_and_equal_rho/saving_model_for_interpretability/",
-                                seed = None, loaded_embedding = loaded_embedding,
-                                dataset = "amazon_categories/beauty/", use_rho = False,
-                                clip_grad = 1.09, dropout = 0.1943, rnn_dropout = 0.0805, embed_dropout = 0.3489,
-                                lr = 2.553E-02, weight_decay = 1.64E-06, depth = 1, logging_dir = "/homes/gws/roysch/work/rational_recurrences/logging/",
-                                base_data_dir = "/m-pinotHD/zinhome/data/", output_dir = "/homes/gws/roysch/work/rational_recurrences/models")
-        cur_valid_err, cur_test_err = train_classifier.main(args)
+        args = ExperimentParams(pattern = argv.pattern, d_out = argv.d_out,
+                                learned_structure = argv.learned_structure, reg_goal_params = argv.reg_goal_params,
+                                filename_prefix=argv.filename_prefix,
+                                seed = argv.seed, loaded_embedding = loaded_embedding,
+                                dataset = argv.dataset, use_rho = False,
+                                clip_grad = argv.clip, dropout = argv.dropout, rnn_dropout = argv.rnn_dropout,
+                                embed_dropout = argv.embed_dropout, gpu=argv.gpu,
+                                max_epoch = argv.max_epoch, patience = argv.patience,
+                                batch_size = argv.batch_size,
+                                lr = argv.lr, weight_decay = argv.weight_decay, depth = argv.depth, logging_dir = argv.logging_dir,
+                                base_data_dir = argv.base_dir, output_dir = argv.model_save_dir)
+        cur_valid_err = train_classifier.main(args)
 
     # finding the largest learning rate that doesn't diverge, for evaluating the claims in this paper:
     # The Marginal Value of Adaptive Gradient Methods in Machine Learning
@@ -147,14 +155,6 @@ def main():
                               loaded_embedding = loaded_embedding)
 
 
-def preload_embed():
-    start = time.time()
-    import dataloader
-    embs =  dataloader.load_embedding("/m-pinotHD/zinhome/data/amazon_categories/video/embedding")
-    print("took {} seconds".format(time.time()-start))
-    print("preloaded embeddings from amazon dataset.")
-    print("")
-    return embs
 
 # hparams to search over (from paper):
 # clip_grad, dropout, learning rate, rnn_dropout, embed_dropout, l2 regularization (actually weight decay)
@@ -187,7 +187,7 @@ def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):
     for i in range(m):
         cur_assignments = all_assignments[i]
         args = ExperimentParams(**kwargs, **cur_assignments)
-        cur_valid_err, cur_test_err = train_classifier.main(args)
+        cur_valid_err = train_classifier.main(args)
         if cur_valid_err < best_valid_err:
             best_assignment = cur_assignments
             best_valid_err = cur_valid_err
@@ -197,11 +197,37 @@ def train_m_then_n_models(m,n,counter, total_evals,start_time,**kwargs):
 
     for i in range(n):
         args = ExperimentParams(filename_suffix="_{}".format(i),**kwargs,**best_assignment)
-        cur_valid_err, cur_test_err = train_classifier.main(args)
+        cur_valid_err = train_classifier.main(args)
         counter[0] = counter[0] + 1
         print("trained {} out of {} hyperparameter assignments, so far {} seconds".format(
             counter[0],total_evals, round(time.time()-start_time, 3)))
     return best_assignment
-        
+
+
+
+def training_arg_parser():
+    """ CLI args related to training models. """
+    p = ArgumentParser(add_help=False)
+    p.add_argument("--learned_structure", help="Learned structure", type=str, default="l1-states-learned")
+    p.add_argument('--reg_goal_params', type=int, default = 20)
+    p.add_argument('--filename_prefix', help='logging file prefix?', type=str, default="all_cs_and_equal_rho/saving_model_for_interpretability/")
+    p.add_argument("-t", "--dropout", help="Use dropout", type=float, default=0.1943)
+    p.add_argument("--rnn_dropout", help="Use RNN dropout", type=float, default=0.0805)
+    p.add_argument("--embed_dropout", help="Use RNN dropout", type=float, default=0.3489)
+    p.add_argument("-l", "--lr", help="Learning rate", type=float, default=2.553E-02)
+    p.add_argument("--clip", help="Gradient clipping", type=float, default=1.09)
+    p.add_argument('-w', "--weight_decay", help="Weight decay", type=float, default=1.64E-06)
+    p.add_argument("-m", "--model_save_dir", help="where to save the trained model", type=str)
+    p.add_argument("--logging_dir", help="Logging directory", type=str)
+    p.add_argument("--max_epoch", help="Number of iterations", type=int, default=500)
+    p.add_argument("--patience", help="Patience parameter (for early stopping)", type=int, default=30)
+    # p.add_argument("-r", "--scheduler", help="Use reduce learning rate on plateau schedule", action='store_true')
+    # p.add_argument("--debug", help="Debug", type=int, default=0)
+    return p
+
+
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser(description=__doc__,
+                            formatter_class=ArgumentDefaultsHelpFormatter,
+                            parents=[experiment_tools.general_arg_parser(), training_arg_parser()])
+    sys.exit(main(parser.parse_args()))

@@ -17,8 +17,8 @@ def preload_embed(dir_location):
 def general_arg_parser():
     """ CLI args related to training and testing models. """
     p = ArgumentParser(add_help=False)
-    p.add_argument("-d", '--base_dir', help="Data directory", type=str)
-    p.add_argument("-a", "--dataset", help="Dataset name", type=str)
+    p.add_argument("-d", '--base_dir', help="Data directory", type=str, required=True)
+    p.add_argument("-a", "--dataset", help="Dataset name", type=str, required=True)
     p.add_argument("-p", "--pattern", help="Pattern specification", type=str, default="1-gram,2-gram,3-gram,4-gram")
     p.add_argument("--d_out", help="Output dimension(?)", type=str, default="0,4,0,2")
     p.add_argument("-g", "--gpu", help="Use GPU", action='store_true')

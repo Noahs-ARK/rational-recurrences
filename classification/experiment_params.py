@@ -60,7 +60,8 @@ class ExperimentParams:
                  learned_structure=False,
                  logging_dir="/home/jessedd/projects/rational-recurrences/classification/logging/",
                  base_data_dir="/home/jessedd/data/",
-                 output_dir=None
+                 output_dir=None,
+                 input_model=None
     ):
         self.path = path 
         self.embedding = embedding
@@ -108,6 +109,7 @@ class ExperimentParams:
         self.logging_dir = logging_dir
         self.base_data_dir = base_data_dir
         self.output_dir = output_dir
+        self.input_model = input_model
         
         self.current_experiment()
 

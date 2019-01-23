@@ -8,12 +8,12 @@ import regularization_search_experiments
 def main():
     loaded_embedding = preload_embed()
     
-    exp_num = 10
+    exp_num = 11
 
     start_time = time.time()
     counter = [0]
     categories = get_categories()
-    
+
     
     # a basic experiment
     if exp_num == 0:
@@ -140,6 +140,18 @@ def main():
                               filename_prefix="all_cs_and_equal_rho/hparam_opt/",
                               dataset = "sst/", use_rho = False, seed=None,
                               loaded_embedding = loaded_embedding)
+
+    elif exp_num == 11:
+
+        args = ExperimentParams(pattern = "1-gram,2-gram,3-gram,4-gram", d_out = "0,4,0,2",
+                                learned_structure = "l1-states-learned", reg_goal_params = 20,
+                                filename_prefix="all_cs_and_equal_rho/saving_model_for_interpretability/",
+                                seed = None, loaded_embedding = loaded_embedding,
+                                dataset = "amazon_categories/original_mix/", use_rho = False,
+                                clip_grad = 1.09, dropout = 0.1943, rnn_dropout = 0.0805, embed_dropout = 0.3489,
+                                lr = 2.553E-02, weight_decay = 1.64E-06, depth = 1)
+        cur_valid_err, cur_test_err = train_classifier.main(args)
+        
 
 
 def preload_embed():

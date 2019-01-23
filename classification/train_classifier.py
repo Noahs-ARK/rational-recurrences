@@ -91,17 +91,14 @@ class Model(nn.Module):
         if self.args.model == "rrnn":
             input_fwd = input
             emb_fwd = self.emb_layer(input_fwd)
-#            if self.training:
-            if True:
-                 emb_fwd = self.drop(emb_fwd)
+            emb_fwd = self.drop(emb_fwd)
             out_fwd, hidden_fwd = self.encoder(emb_fwd)
             batch, length = emb_fwd.size(-2), emb_fwd.size(0)
             out_fwd = out_fwd.view(length, batch, 1, -1)
             feat = out_fwd[-1,:,0,:]
         else:
             emb = self.emb_layer(input)
-            if self.training:
-                 emb = self.drop(emb)
+            emb = self.drop(emb)
             output, hidden = self.encoder(emb)
             batch, length = emb.size(-2), emb.size(0)
             output = output.view(length, batch, 1, -1)

@@ -172,8 +172,6 @@ def create_one_batch(x, y, map2id, oov='<oov>', gpu=False,
             x_bwd = x_bwd.cuda()
         return (x_fwd, x_bwd), y
 
-    # for i in range(batch_size):
-    #     print("eob: {} {} {} {}, {}, {}".format(x_fwd[-5][i], x_fwd[-4][i], x_fwd[-3][i], x_fwd[-2][i], x_fwd[-1][i],x_padded[i][-5:]))
     return (x_fwd), y, x_padded
 
 

@@ -92,13 +92,15 @@ class Model(nn.Module):
             input_fwd = input
             emb_fwd = self.emb_layer(input_fwd)
             emb_fwd = self.drop(emb_fwd)
-            out_fwd, hidden_fwd = self.encoder(emb_fwd)
+
+            out_fwd, hidden_fwd, _ = self.encoder(emb_fwd)
             batch, length = emb_fwd.size(-2), emb_fwd.size(0)
             out_fwd = out_fwd.view(length, batch, 1, -1)
             feat = out_fwd[-1,:,0,:]
         else:
             emb = self.emb_layer(input)
             emb = self.drop(emb)
+
             output, hidden = self.encoder(emb)
             batch, length = emb.size(-2), emb.size(0)
             output = output.view(length, batch, 1, -1)
@@ -107,6 +109,15 @@ class Model(nn.Module):
         feat = self.drop(feat)
         return self.out(feat)
 
+    # Assume rrnn model
+    def visualize(self, input):
+        assert self.args.model == "rrnn"
+        input_fwd = input
+        emb_fwd = self.emb_layer(input_fwd)
+#        emb_fwd = self.drop(emb_fwd)
+        _, _, traces = self.encoder(emb_fwd, None, True, True)
+
+        return traces
 
 def eval_model(niter, model, valid_x, valid_y):
     model.eval()
@@ -375,7 +386,193 @@ def train_model(epoch, model, optimizer,
     return best_valid, unchanged, stop
 
 
+class TraceElement():
+    def __init__(self, doc):
+        self.score = 0
+        self.doc = doc
+        self.u_indices = []
+
+    def print(self, index):
+        print("{}.".format(index), end=' ')
+        self.print_rec(0, 0)
+        print(float(self.score.numpy()))
+
+    def print_rec(self, doc_index, u_index):
+        if u_index == len(self.u_indices):
+            return
+
+        while(doc_index < self.u_indices[u_index]):
+            print(self.doc[doc_index], end=' ')
+            doc_index += 1
+
+        self.print_rec(doc_index, u_index+1)
+
+
+def main_visualize(args, dataset_file, top_k):
+    model, datasets, labels, emb_layer = main_init(args)
+
+    model.eval()
+
+    d, l, txt_batches = dataloader.create_batches(
+        datasets[1], labels[1],
+        args.batch_size,
+        emb_layer.word2id,
+        sort=True,
+        gpu=args.gpu,
+        sos=SOS,
+        eos=EOS,
+        get_text_batches=True
+    )
+
+    if args.gpu:
+        state_dict = torch.load(args.input_model)
+    else:
+        state_dict = torch.load(args.input_model, map_location=lambda storage, loc: storage)
+
+    model.load_state_dict(state_dict)
+
+    if args.gpu:
+        model.to_cuda(model)
+
+    if args.gpu:
+        model.cuda()
+
+    #top_samples = torch.zeros(len(traces[0][0])), )
+
+    n_patts = [int(one_size) for one_size in args.d_out.split(",")]
+
+    # top_traces = [
+    #                 [ [] for x in range(length) ]
+    #                 for (i,length) in enumerate(n_patts)
+    #                ]
+
+    for x, txt_x in zip(d, txt_batches):
+        # print(len(x[0]), len(txt_x))
+        assert(len(x[0]) == len(txt_x))
+
+        # print(x[-5][-5], x[-4][-5], x[-3][-5], x[-2][-5], x[-1][-5], txt_x[-5][-5:], txt_x[-4][-5:], txt_x[-3][-5:], txt_x[-2][-5:], txt_x[-1][-5:])
+        # sys.exit(1)
+        x = Variable(x)
+        if args.gpu:
+            x = x.cuda()
+        x = (x)
+        traces = model.visualize(x)
+        # traces1: n-patterns lengths, traces2: n_traces per patt (patt_len * 2), traces3: n_instances, traces4: n_patterns per pattern length
+        # print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t1 (traces per 2nd patt)={}, t2={}, t3={},t00={} t01={} t10={}, t000={}, t100={}, t0000={}, t0001={}'.format(x.size(),
+        #                                                                                                 len(traces),
+        #                                                                                                 len(traces[0]),
+        #                                                                                                 len(traces[1]),
+        #                                                                                                 len(traces[2]),
+        #                                                                                                 len(traces[3])
+                                                                                                        # len(traces[0][0]),
+                                                                                                        # len(traces[0][1]),
+                                                                                                        # len(traces[1][0]),
+                                                                                                        # len(traces[0][0][0]),
+                                                                                                        # len(traces[1][0][0]),
+                                                                                                        # len(traces[0][0][0][0]),
+                                                                                                        # len(traces[1][0][0][0])
+                                                                                                        # ))
+
+        print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t00={}'.format(
+            x.size(), len(traces), len(traces[0]), len(traces[0][0])))
+
+    #     # print(x.size(), x[0].size())
+    #     for (i, same_length_traces) in enumerate(traces):
+    #         # print(i)
+    #         for j in range(n_patts[i]):
+    #             # print("\t", j)
+    #             for (doc_id, doc) in enumerate(txt_x):
+    #                 # print("\t\t", doc_id)
+    #                 update_trace(same_length_traces, doc_id, j, doc, top_traces[i][j])
+    #
+    # sys.exit(-1)
+
+    for (i, same_length_traces) in enumerate(traces):
+        print(i)
+        for j in range(n_patts[i]):
+            # print("\t", j, len(top_traces[i][j]))
+            a = traces[i][j]
+            f = lambda pair: pair[0].score
+
+            # print(f(a[0]), a[0].score)
+            # print(a)
+            local_top_traces = sorted(zip(a, txt_x), key=f, reverse=True)[:top_k]
+
+            # print(top_traces)
+
+            print_top_traces(local_top_traces)
+
+
+    sys.stdout.flush()
+
+
+def print_top_traces(top_traces):
+    for (i, pair) in enumerate(top_traces):
+        pair[0].print(i+1, pair[1])
+
+def update_trace(patt_trace, doc_id, patt_id, doc, trace_elements):
+    d = TraceElement(doc)
+
+    start_index =  0
+
+    while doc[start_index] == '<pad>':
+        start_index += 1
+
+    local_trace = [ patt_trace[x][doc_id][patt_id] for x in range(len(patt_trace))]
+
+    print(len(local_trace), patt_trace[0][doc_id][patt_id].numpy(), len(doc), start_index)
+    d.score = torch.FloatTensor(1).random_(0, 100)
+
+    d.u_indices = torch.LongTensor(int(len(patt_trace)/2)).random_(0, len(doc)).sort()[0]
+
+    # print("Adding d={}, u={}, done".format(d.score, d.u_indices))
+    trace_elements.append(d)
+
 def main_test(args):
+    model, datasets, labels, emb_layer = main_init(args)
+
+    batched_datasets = []
+    batched_labels = []
+    for [dataset, label] in zip(datasets, labels):
+        d, l = dataloader.create_batches(
+        dataset, label,
+        args.batch_size,
+        emb_layer.word2id,
+        sort=True,
+        gpu=args.gpu,
+        sos=SOS,
+        eos=EOS
+    )
+        batched_datasets.append(d)
+        batched_labels.append(l)
+
+
+    if args.gpu:
+        state_dict = torch.load(args.input_model)
+    else:
+        state_dict = torch.load(args.input_model, map_location=lambda storage, loc: storage)
+
+    model.load_state_dict(state_dict)
+
+    if args.gpu:
+        model.to_cuda(model)
+
+    if args.gpu:
+        model.cuda()
+
+
+    names = ['train', 'valid', 'test']
+
+
+    errs = [eval_model(0, model, d, l) for [d,l] in zip(batched_datasets, batched_labels)]
+
+    for [name, err] in zip(names, errs):
+        sys.stdout.write("{}_err: {:.6f}\n".format(name, err))
+
+    sys.stdout.flush()
+    return errs
+
+def main_init(args):
     if args.seed:
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -395,89 +592,21 @@ def main_test(args):
     )
 
     nclasses = max(train_Y) + 1
-    random_perm = list(range(len(train_X)))
-    np.random.shuffle(random_perm)
-    train_x, train_y = dataloader.create_batches(
-        train_X, train_Y,
-        args.batch_size,
-        emb_layer.word2id,
-        sort=True,
-        gpu=args.gpu,
-        sos=SOS,
-        eos=EOS
-    )
-    valid_x, valid_y = dataloader.create_batches(
-        valid_X, valid_Y,
-        args.batch_size,
-        emb_layer.word2id,
-        sort=True,
-        gpu=args.gpu,
-        sos=SOS,
-        eos=EOS
-    )
-    test_x, test_y = dataloader.create_batches(
-        test_X, test_Y,
-        args.batch_size,
-        emb_layer.word2id,
-        sort=True,
-        gpu=args.gpu,
-        sos=SOS,
-        eos=EOS
-    )
 
     model = Model(args, emb_layer, nclasses)
 
-    if args.gpu:
-        state_dict = torch.load(args.input_model)
-    else:
-        state_dict = torch.load(args.input_model, map_location=lambda storage, loc: storage)
-
-    model.load_state_dict(state_dict)
-
-    if args.gpu:
-        model.to_cuda(model)
-
-    if args.gpu:
-        model.cuda()
-
-
-    train_err = eval_model(0, model, train_x, train_y)
-    valid_err = eval_model(0, model, valid_x, valid_y)
-    test_err = eval_model(0, model, test_x, test_y)
-
-    sys.stdout.write("train_err: {:.6f}\n".format(train_err))
-    sys.stdout.write("valid_err: {:.6f}\n".format(valid_err))
-    sys.stdout.write("test_err: {:.6f}\n".format(test_err))
-    sys.stdout.flush()
-    return train_err, valid_err, test_err
-
+    return model, [train_X, valid_X, test_X], [train_Y, valid_Y, test_Y], emb_layer
 
 
 def main(args):
     logging_file = init_logging(args)
-    if args.seed:
-        np.random.seed(args.seed)
-        torch.manual_seed(args.seed)
-    train_X, train_Y, valid_X, valid_Y, test_X, _ = dataloader.read_SST(args.path)
-    data = train_X + valid_X + test_X
+    model, datasets, labels, emb_layer = main_init(args)
 
-    if args.loaded_embedding:
-        embs = args.loaded_embedding
-    else:
-        embs = dataloader.load_embedding(args.embedding)
-    emb_layer = modules.EmbeddingLayer(
-        data,
-        fix_emb=args.fix_embedding,
-        sos=SOS,
-        eos=EOS,
-        embs=embs
-    )
-
-    nclasses = max(train_Y) + 1
-    random_perm = list(range(len(train_X)))
+    random_perm = list(range(len(datasets[0])))
     np.random.shuffle(random_perm)
+
     valid_x, valid_y = dataloader.create_batches(
-        valid_X, valid_Y,
+        datasets[1], labels[1],
         args.batch_size,
         emb_layer.word2id,
         sort=True,
@@ -485,8 +614,6 @@ def main(args):
         sos=SOS,
         eos=EOS
     )
-
-    model = Model(args, emb_layer, nclasses)
 
     if args.gpu:
         model.cuda()
@@ -515,7 +642,7 @@ def main(args):
     for epoch in range(args.max_epoch):
         np.random.shuffle(random_perm)
         train_x, train_y = dataloader.create_batches(
-            train_X, train_Y,
+            datasets[0], labels[0],
             args.batch_size,
             emb_layer.word2id,
             perm=random_perm,
@@ -532,32 +659,11 @@ def main(args):
             unchanged, scheduler, logging_file
         )
 
-        # if writer is not None:
-        #     for name, param in model.named_parameters():
-        #         writer.add_scalar("parameter_mean/" + name,
-        #                           param.data.mean(),
-        #                           epoch)
-        #         writer.add_scalar("parameter_std/" + name, param.data.std(), epoch)
-        #         if param.grad is not None:
-        #             writer.add_scalar("gradient_mean/" + name,
-        #                               param.grad.data.mean(),
-        #                               epoch)
-        #             writer.add_scalar("gradient_std/" + name,
-        #                               param.grad.data.std(),
-        #                               epoch)
-        # if writer is not None:
-        #     writer.add_scalar("loss/best_valid", best_valid, epoch)
-
         if stop:
             break
 
         if args.lr_decay > 0:
             optimizer.param_groups[0]["lr"] *= args.lr_decay
-
-
-    # if writer is not None:
-    #    writer.add_scalar("loss/best_valid", best_valid, epoch)
-    #    writer.close()
 
     if args.output_dir is not None:
         of = os.path.join(args.output_dir, "best_model.pth")

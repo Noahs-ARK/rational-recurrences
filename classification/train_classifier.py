@@ -417,7 +417,12 @@ def main_visualize(args, dataset_file, top_k):
 
     #top_samples = torch.zeros(len(traces[0][0])), )
 
-    n_patts = [int(one_size) for one_size in args.d_out.split(",") if int(one_size) != 0]
+    n_patts = [int(one_size) for one_size in args.d_out.split(",")]
+
+    patt_lengths = [int(patt_len[0]) for patt_len in args.pattern.split(",")]
+
+    patt_lengths = [patt_lengths[i] for i in range(len(patt_lengths)) if n_patts[i] > 0 ]
+    n_patts = [n_patts[i] for i in range(len(n_patts)) if n_patts[i] > 0 ]
 
     # top_traces = [
     #                 [ [] for x in range(length) ]
@@ -481,7 +486,7 @@ def main_visualize(args, dataset_file, top_k):
 
     # loop one: pattern length
     for (i, same_length_traces) in enumerate(traces):
-        print("\nPattern length {}".format(i))
+        print("\nPattern length {}".format(patt_lengths[i]))
         # Loop two: number of patterns of each length
         for j in range(n_patts[i]):
             print("\nPattern index {}\n".format(j))

@@ -10,10 +10,14 @@ from termcolor import colored
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
     class TraceElement():
         def __init__(self, f, u, prev_traces, i, t, pattern_index, sample_index):
+            self.u_indices = np.zeros((int(k / 2)), dtype=int)
+
+            if t < i:
+                self.score = float('-inf')
+                return
 
             # Previous trace values
-            prev_f = prev_traces[i][pattern_index][sample_index] if t > 0 else None
-            prev_u = prev_traces[i-1][pattern_index][sample_index] if i > 0 and t > 0 else None
+            prev_u = prev_traces[i-1][pattern_index][sample_index] if i > 0 else None
 
             # print("in te, t={}, i={}. all prevs is : {}".format(t, i, [x is None for x in prev_traces]))
 
@@ -25,25 +29,27 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
 
             # Two candidates: u (read token) and f (forget token)
             u_score = u[sample_index][pattern_index].data.numpy()
-            f_score = f[sample_index][pattern_index].data.numpy()
-
 
             if prev_u is not None:
                 u_score *= prev_u.score
 
+            prev_f = prev_traces[i][pattern_index][sample_index] if t > i else None
+            f_score = f[sample_index][pattern_index].data.numpy()
+
             if prev_f is not None:
-                if i == 0:
-                    f_score = 0
-                else:
-                    f_score *= prev_f.score
+                f_score *= prev_f.score
+            else:
+                f_score = float('-inf')
+
+
+            # print("in te, doc_ind={}, patt_ind={}, t={}, i={}. u_score={}, f_score={} (u>v={}), all prevs is : {}".format(sample_index, pattern_index, t, i,
+            #         u_score, f_score, u_score >= f_score, [x is None for x in prev_traces]))
 
             if u_score >= f_score:
                 self.score = u_score
                 if prev_u is not None:
                     # self.score *= prev1.score
                     self.u_indices = prev_u.u_indices
-                else:
-                    self.u_indices = np.zeros((int(k / 2)), dtype=int)
                 # else:
                 #     assert i == 0
                 self.u_indices[i] = t
@@ -52,8 +58,6 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
                 if prev_f is not None:
                     self.u_indices = prev_f.u_indices
                     # self.score *= prev2.score
-                else:
-                    self.u_indices = np.zeros((int(k / 2)), dtype=int)
                     # else:
                     #     assert i == 0
 

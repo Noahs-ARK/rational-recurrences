@@ -386,28 +386,6 @@ def train_model(epoch, model, optimizer,
     return best_valid, unchanged, stop
 
 
-class TraceElement():
-    def __init__(self, doc):
-        self.score = 0
-        self.doc = doc
-        self.u_indices = []
-
-    def print(self, index):
-        print("{}.".format(index), end=' ')
-        self.print_rec(0, 0)
-        print(float(self.score.numpy()))
-
-    def print_rec(self, doc_index, u_index):
-        if u_index == len(self.u_indices):
-            return
-
-        while(doc_index < self.u_indices[u_index]):
-            print(self.doc[doc_index], end=' ')
-            doc_index += 1
-
-        self.print_rec(doc_index, u_index+1)
-
-
 def main_visualize(args, dataset_file, top_k):
     model, datasets, labels, emb_layer = main_init(args)
 
@@ -446,6 +424,9 @@ def main_visualize(args, dataset_file, top_k):
     #                 for (i,length) in enumerate(n_patts)
     #                ]
 
+
+    all_traces = [[[] for x in range(i)] for i in n_patts]
+
     for x, txt_x in zip(d, txt_batches):
         # print(len(x[0]), len(txt_x))
         assert(len(x[0]) == len(txt_x))
@@ -456,8 +437,16 @@ def main_visualize(args, dataset_file, top_k):
         if args.gpu:
             x = x.cuda()
         x = (x)
+
+        # traces1: n-patterns lengths, traces2: n_instances, traces3: n_patterns per pattern length
         traces = model.visualize(x)
-        # traces1: n-patterns lengths, traces2: n_traces per patt (patt_len * 2), traces3: n_instances, traces4: n_patterns per pattern length
+
+        # print(len(traces), len(traces[0]), len(traces[0][0]))
+
+        for i in range(len(n_patts)):
+            for j in range(n_patts[i]):
+                all_traces[i][j].extend(traces[i][j])
+
         # print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t1 (traces per 2nd patt)={}, t2={}, t3={},t00={} t01={} t10={}, t000={}, t100={}, t0000={}, t0001={}'.format(x.size(),
         #                                                                                                 len(traces),
         #                                                                                                 len(traces[0]),
@@ -473,8 +462,8 @@ def main_visualize(args, dataset_file, top_k):
                                                                                                         # len(traces[1][0][0][0])
                                                                                                         # ))
 
-        print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t00={}'.format(
-            x.size(), len(traces), len(traces[0]), len(traces[0][0])))
+        # print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t00={}'.format(
+        #     x.size(), len(traces), len(traces[0]), len(traces[0][0])))
 
     #     # print(x.size(), x[0].size())
     #     for (i, same_length_traces) in enumerate(traces):
@@ -487,16 +476,21 @@ def main_visualize(args, dataset_file, top_k):
     #
     # sys.exit(-1)
 
+    # print(len(all_traces), len(all_traces[0]), len(all_traces[0][0]))
+    # print(len(all_traces), len(all_traces[1]), len(all_traces[1][0]))
+
+    # loop one: pattern length
     for (i, same_length_traces) in enumerate(traces):
-        print(i)
+        print("\nPattern length {}".format(i))
+        # Loop two: number of patterns of each length
         for j in range(n_patts[i]):
-            # print("\t", j, len(top_traces[i][j]))
-            a = traces[i][j]
+            print("\nPattern index {}\n".format(j))
+            patt_traces = traces[i][j]
             f = lambda pair: pair[0].score
 
             # print(f(a[0]), a[0].score)
             # print(a)
-            local_top_traces = sorted(zip(a, txt_x), key=f, reverse=True)[:top_k]
+            local_top_traces = sorted(zip(patt_traces, txt_x), key=f, reverse=True)[:top_k]
 
             # print(top_traces)
 
@@ -510,23 +504,23 @@ def print_top_traces(top_traces):
     for (i, pair) in enumerate(top_traces):
         pair[0].print(i+1, pair[1])
 
-def update_trace(patt_trace, doc_id, patt_id, doc, trace_elements):
-    d = TraceElement(doc)
-
-    start_index =  0
-
-    while doc[start_index] == '<pad>':
-        start_index += 1
-
-    local_trace = [ patt_trace[x][doc_id][patt_id] for x in range(len(patt_trace))]
-
-    print(len(local_trace), patt_trace[0][doc_id][patt_id].numpy(), len(doc), start_index)
-    d.score = torch.FloatTensor(1).random_(0, 100)
-
-    d.u_indices = torch.LongTensor(int(len(patt_trace)/2)).random_(0, len(doc)).sort()[0]
-
-    # print("Adding d={}, u={}, done".format(d.score, d.u_indices))
-    trace_elements.append(d)
+# def update_trace(patt_trace, doc_id, patt_id, doc, trace_elements):
+#     d = TraceElement(doc)
+#
+#     start_index =  0
+#
+#     while doc[start_index] == '<pad>':
+#         start_index += 1
+#
+#     local_trace = [ patt_trace[x][doc_id][patt_id] for x in range(len(patt_trace))]
+#
+#     print(len(local_trace), patt_trace[0][doc_id][patt_id].numpy(), len(doc), start_index)
+#     d.score = torch.FloatTensor(1).random_(0, 100)
+#
+#     d.u_indices = torch.LongTensor(int(len(patt_trace)/2)).random_(0, len(doc)).sort()[0]
+#
+#     # print("Adding d={}, u={}, done".format(d.score, d.u_indices))
+#     trace_elements.append(d)
 
 def main_test(args):
     model, datasets, labels, emb_layer = main_init(args)

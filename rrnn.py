@@ -7,7 +7,7 @@ from torch.autograd import Variable
 
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
     class TraceElement():
-        def __init__(self, u, f, prev_traces, is_u, i, t, x, y):
+        def __init__(self, u, f, prev_traces, is_u, i, t, pattern_index, sample_index):
             self.u_indices = np.zeros((int(k/2)), dtype=int)
 
             # if u[y][x].data.numpy() > 0 or f[y][x].data.numpy() > 0:
@@ -16,18 +16,18 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             #           prev_traces[i+1][y][x].u_indices if not is_u[y][x].data.numpy() and prev_traces[i+1] is not None else None,
             #           self.u_indices)
 
-            if is_u[y][x].data.numpy():
-                self.score = u[y][x].data.numpy()
+            if is_u[sample_index][pattern_index].data.numpy():
+                self.score = u[sample_index][pattern_index].data.numpy()
                 if prev_traces[i] is not None:
                     # self.score *= prev1.score
-                    self.u_indices = prev_traces[i][y][x].u_indices
+                    self.u_indices = prev_traces[i][pattern_index][sample_index].u_indices
                 # else:
                 #     assert i == 0
                 self.u_indices[i] = t
             else:
-                self.score = f[y][x].data.numpy()
+                self.score = f[sample_index][pattern_index].data.numpy()
                 if prev_traces[i+1] is not None:
-                    self.u_indices = prev_traces[i+1][y][x].u_indices
+                    self.u_indices = prev_traces[i+1][pattern_index][sample_index].u_indices
                     # self.score *= prev2.score
                     # else:
                     #     assert i == 0
@@ -60,15 +60,13 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
     def get_trace(f, u, prev_traces, i, t):
         is_u = u > f
 
-        # print(is_u.size())
-
         traces = [
             [
                 TraceElement(u, f, prev_traces,
-                             is_u, i, t, x, y)
-                for x in range(u.size()[1])
+                             is_u, i, t, pattern_index, sample_index)
+                for sample_index in range(u.size()[0])
             ]
-            for y in range(u.size()[0])
+            for pattern_index in range(u.size()[1])
         ]
 
         return traces
@@ -160,8 +158,8 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             for i in range(len(cs_prev)):
                 cs_final[i].append(cs_t[i])
 
-        if keep_trace:
-            print("t0=", len(traces), len(traces[0]),)
+        # if keep_trace:
+        #     print("t0=", len(traces), len(traces[0]),)
 
         for i in range(len(cs_final)):
             cs_final[i] = torch.stack(cs_final[i], dim=1).view(batch, -1)

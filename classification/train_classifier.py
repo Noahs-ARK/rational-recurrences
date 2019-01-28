@@ -417,7 +417,7 @@ def main_visualize(args, dataset_file, top_k):
 
     #top_samples = torch.zeros(len(traces[0][0])), )
 
-    n_patts = [int(one_size) for one_size in args.d_out.split(",")]
+    n_patts = [int(one_size) for one_size in args.d_out.split(",") if int(one_size) != 0]
 
     # top_traces = [
     #                 [ [] for x in range(length) ]

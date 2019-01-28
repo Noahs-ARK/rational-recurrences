@@ -10,3 +10,4 @@ pyyaml==3.12
 #ipython==6.2.0
 tensorboardx==0.8
 pynvrtc
+termcolor

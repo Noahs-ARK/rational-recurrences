@@ -3,12 +3,19 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.autograd import Variable
+from termcolor import colored
+
 
 
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
     class TraceElement():
-        def __init__(self, u, f, prev_traces, is_u, i, t, pattern_index, sample_index):
-            self.u_indices = np.zeros((int(k/2)), dtype=int)
+        def __init__(self, u, f, prev_traces, i, t, pattern_index, sample_index):
+
+            # Previous trace values
+            prev_f = prev_traces[i+1][pattern_index][sample_index] if t > 0 else None
+            prev_u = prev_traces[i][pattern_index][sample_index] if i > 0 and t > 0 else None
+
+            # print("in te, t={}, i={}. all prevs is : {}".format(t, i, [x is None for x in prev_traces]))
 
             # if u[y][x].data.numpy() > 0 or f[y][x].data.numpy() > 0:
             #     print("before: ", x, y, u[y][x].data.numpy(), f[y][x].data.numpy(), is_u[y][x].data.numpy(), i, t,
@@ -16,19 +23,35 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             #           prev_traces[i+1][y][x].u_indices if not is_u[y][x].data.numpy() and prev_traces[i+1] is not None else None,
             #           self.u_indices)
 
-            if is_u[sample_index][pattern_index].data.numpy():
-                self.score = u[sample_index][pattern_index].data.numpy()
-                if prev_traces[i] is not None:
+            # Two candidates: u (read token) and f (forget token)
+            u_score = u[sample_index][pattern_index].data.numpy()
+            f_score = f[sample_index][pattern_index].data.numpy()
+
+
+            if prev_u is not None:
+                u_score *= prev_u.score
+
+            if prev_f is not None:
+                f_score *= prev_f.score
+
+
+            if u_score > f_score:
+                self.score = u_score
+                if prev_u is not None:
                     # self.score *= prev1.score
-                    self.u_indices = prev_traces[i][pattern_index][sample_index].u_indices
+                    self.u_indices = prev_u.u_indices
+                else:
+                    self.u_indices = np.zeros((int(k / 2)), dtype=int)
                 # else:
                 #     assert i == 0
                 self.u_indices[i] = t
             else:
-                self.score = f[sample_index][pattern_index].data.numpy()
-                if prev_traces[i+1] is not None:
-                    self.u_indices = prev_traces[i+1][pattern_index][sample_index].u_indices
+                self.score = f_score
+                if prev_f is not None:
+                    self.u_indices = prev_f.u_indices
                     # self.score *= prev2.score
+                else:
+                    self.u_indices = np.zeros((int(k / 2)), dtype=int)
                     # else:
                     #     assert i == 0
 
@@ -42,7 +65,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
 
         def print_rec(self, doc, u_index):
             doc_index = self.u_indices[u_index]
-            print(doc[doc_index], end='_MP ')
+            print(colored(doc[doc_index], 'red'), end='_MP ')
 
             u_index += 1
 
@@ -58,12 +81,10 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             self.print_rec(doc, u_index)
 
     def get_trace(f, u, prev_traces, i, t):
-        is_u = u > f
-
         traces = [
             [
                 TraceElement(u, f, prev_traces,
-                             is_u, i, t, pattern_index, sample_index)
+                             i, t, pattern_index, sample_index)
                 for sample_index in range(u.size()[0])
             ]
             for pattern_index in range(u.size()[1])
@@ -94,9 +115,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
         css = [Variable(u.data.new(length, batch, bidir, d)) for i in range(int(k/2))]
 
         traces = None
-        if keep_trace:
-            prev_traces = None
-            prev2_traces = None
+        prev_traces = None
 
         for di in range(bidir):
             if di == 0:
@@ -114,6 +133,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
                 # ind = 0
                 if keep_trace:
                     all_traces = [None]
+
                 for i in range(len(cs_prev)):
                     first_term = cs_prev[i] * forgets[i][t, :, di, :]
                     second_term = us[i][t, :, di, :]
@@ -125,7 +145,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
 
                     # print(second_term.size(),forgets[i][t, :, di, :].size(),traces[ind+1].size())
                     if keep_trace:
-                        traces = get_trace(first_term, second_term, prev_traces, i, t)
+                        traces = get_trace(forgets[i][t, :, di, :], us[i][t, :, di, :], prev_traces, i, t)
                         all_traces.append(traces)
                         # traces[ind,t] = second_term.data
                         # ind += 1

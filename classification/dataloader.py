@@ -151,13 +151,14 @@ def pad(sequences, sos=None, eos=None, pad_token='<pad>', pad_left=True, reverse
 def create_one_batch(x, y, map2id, oov='<oov>', gpu=False,
                    sos=None, eos=None, bidirectional=False):
     oov_id = map2id[oov]
-    x_fwd = pad(x, sos=sos, eos=eos, pad_left=True)
-    length = len(x_fwd[0])
-    batch_size = len(x_fwd)
-    x_fwd = [ map2id.get(w, oov_id) for seq in x_fwd for w in seq ]
+    x_padded = pad(x, sos=sos, eos=eos, pad_left=True)
+    length = len(x_padded[0])
+    batch_size = len(x_padded)
+    x_fwd = [ map2id.get(w, oov_id) for seq in x_padded for w in seq ]
     x_fwd = torch.LongTensor(x_fwd)
     assert x_fwd.size(0) == length*batch_size
     x_fwd, y = x_fwd.view(batch_size, length).t().contiguous(), torch.LongTensor(y)
+
     if gpu:
         x_fwd, y = x_fwd.cuda(), y.cuda()
     if bidirectional:
@@ -170,12 +171,15 @@ def create_one_batch(x, y, map2id, oov='<oov>', gpu=False,
         if gpu:
             x_bwd = x_bwd.cuda()
         return (x_fwd, x_bwd), y
-    return (x_fwd), y
+
+    # for i in range(batch_size):
+    #     print("eob: {} {} {} {}, {}, {}".format(x_fwd[-5][i], x_fwd[-4][i], x_fwd[-3][i], x_fwd[-2][i], x_fwd[-1][i],x_padded[i][-5:]))
+    return (x_fwd), y, x_padded
 
 
 # shuffle training examples and create mini-batches
 def create_batches(x, y, batch_size, map2id, perm=None, sort=False, gpu=False,
-                   sos=None, eos=None, bidirectional=False):
+                   sos=None, eos=None, bidirectional=False, get_text_batches=False):
 
     lst = perm or list(range(len(x)))
     # sort sequences based on their length; necessary for SST
@@ -185,28 +189,39 @@ def create_batches(x, y, batch_size, map2id, perm=None, sort=False, gpu=False,
     x = [ x[i] for i in lst ]
     y = [ y[i] for i in lst ]
 
+    txt_batches = None
+    if get_text_batches:
+        txt_batches = []
+
     sum_len = 0.0
     batches_x = [ ]
     batches_y = [ ]
+
+
     size = batch_size
     nbatch = (len(x)-1) // size + 1
     for i in range(nbatch):
-        bx, by = create_one_batch(x[i*size:(i+1)*size], y[i*size:(i+1)*size],
+        bx, by, padded_x = create_one_batch(x[i*size:(i+1)*size], y[i*size:(i+1)*size],
                                   map2id, gpu=gpu, sos=sos, eos=eos, bidirectional=bidirectional)
         sum_len += len(bx[0])
         batches_x.append(bx)
         batches_y.append(by)
+
+        if get_text_batches:
+            txt_batches.append(padded_x)
 
     if sort:
         perm = list(range(nbatch))
         random.shuffle(perm)
         batches_x = [ batches_x[i] for i in perm ]
         batches_y = [ batches_y[i] for i in perm ]
+        if get_text_batches:
+            txt_batches = [txt_batches[i] for i in perm]
 
     # sys.stdout.write("{} batches, avg len: {:.1f}\n".format(
     #     nbatch, sum_len/nbatch
     # ))
-    return batches_x,  batches_y
+    return batches_x,  batches_y, txt_batches
 
 
 def load_embedding_npz(path):

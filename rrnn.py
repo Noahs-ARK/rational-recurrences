@@ -9,11 +9,11 @@ from termcolor import colored
 
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
     class TraceElement():
-        def __init__(self, u, f, prev_traces, i, t, pattern_index, sample_index):
+        def __init__(self, f, u, prev_traces, i, t, pattern_index, sample_index):
 
             # Previous trace values
-            prev_f = prev_traces[i+1][pattern_index][sample_index] if t > 0 else None
-            prev_u = prev_traces[i][pattern_index][sample_index] if i > 0 and t > 0 else None
+            prev_f = prev_traces[i][pattern_index][sample_index] if t > 0 else None
+            prev_u = prev_traces[i-1][pattern_index][sample_index] if i > 0 and t > 0 else None
 
             # print("in te, t={}, i={}. all prevs is : {}".format(t, i, [x is None for x in prev_traces]))
 
@@ -32,10 +32,12 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
                 u_score *= prev_u.score
 
             if prev_f is not None:
-                f_score *= prev_f.score
+                if i == 0:
+                    f_score = 0
+                else:
+                    f_score *= prev_f.score
 
-
-            if u_score > f_score:
+            if u_score >= f_score:
                 self.score = u_score
                 if prev_u is not None:
                     # self.score *= prev1.score
@@ -83,7 +85,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
     def get_trace(f, u, prev_traces, i, t):
         traces = [
             [
-                TraceElement(u, f, prev_traces,
+                TraceElement(f, u, prev_traces,
                              i, t, pattern_index, sample_index)
                 for sample_index in range(u.size()[0])
             ]
@@ -126,13 +128,13 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             cs_prev = [cs_init[i][:, di, :] for i in range(len(cs_init))]
 
             if keep_trace:
-                prev_traces = [None for i in range(len(cs_init) + 1)]
+                prev_traces = [None for i in range(len(cs_init))]
 
             for t in time_seq:
                 cs_t = []
                 # ind = 0
                 if keep_trace:
-                    all_traces = [None]
+                    all_traces = []
 
                 for i in range(len(cs_prev)):
                     first_term = cs_prev[i] * forgets[i][t, :, di, :]

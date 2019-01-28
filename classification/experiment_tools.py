@@ -23,7 +23,7 @@ def general_arg_parser():
     p.add_argument("--d_out", help="Output dimension(?)", type=str, default="0,4,0,2")
     p.add_argument("-g", "--gpu", help="Use GPU", action='store_true')
     p.add_argument('--depth', help="Depth of network", type=int, default=1)
-    p.add_argument("-s", "--seed", help="Random seed", type=int, default=None)
+    p.add_argument("-s", "--seed", help="Random seed", type=int, default=1234)
     p.add_argument("-b", "--batch_size", help="Batch size", type=int, default=64)
 
     # p.add_argument("--max_doc_len",

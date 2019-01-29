@@ -424,12 +424,6 @@ def main_visualize(args, dataset_file, top_k):
     patt_lengths = [patt_lengths[i] for i in range(len(patt_lengths)) if n_patts[i] > 0 ]
     n_patts = [n_patts[i] for i in range(len(n_patts)) if n_patts[i] > 0 ]
 
-    # top_traces = [
-    #                 [ [] for x in range(length) ]
-    #                 for (i,length) in enumerate(n_patts)
-    #                ]
-
-
     all_traces = [[[] for x in range(i)] for i in n_patts]
 
     for x, txt_x in zip(d, txt_batches):

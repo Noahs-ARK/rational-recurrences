@@ -153,25 +153,6 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
                     if keep_trace:
                         traces = get_trace(forgets[i][t, :, di, :], us[i][t, :, di, :], prev_traces, i, t)
                         all_traces.append(traces)
-                        # traces[ind,t] = second_term.data
-                        # ind += 1
-                        #
-                        # if (t == 0):
-                        #     prev = 1
-                        # else:
-                        #     prev = traces[ind, t - 1]
-                        #     print("ps=",prev.size())
-                        #
-                        # traces[ind, t] = forgets[i][t, :, di, :].data
-                        #
-                        # print("fs=",forgets[i][t, :, di, :].data.size(), "ts=", traces[ind, t].size())
-                        # traces[ind, t] *= prev
-                        # # val = prev * forgets[i][t, :, di, :].data
-                        # print("ts2=", traces[ind, t].size())
-                        #
-                        # # traces[ind, t] = forgets[i][t, :, di, :].data
-                        #
-                        # ind += 1
 
                 if keep_trace:
                     prev_traces = all_traces
@@ -183,9 +164,6 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
 
             for i in range(len(cs_prev)):
                 cs_final[i].append(cs_t[i])
-
-        # if keep_trace:
-        #     print("t0=", len(traces), len(traces[0]),)
 
         for i in range(len(cs_final)):
             cs_final[i] = torch.stack(cs_final[i], dim=1).view(batch, -1)

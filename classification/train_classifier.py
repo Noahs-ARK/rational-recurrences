@@ -453,11 +453,12 @@ def main_visualize(args, dataset_file, top_k):
         for i in range(len(n_patts)):
             if len(all_traces[i]) == 0:
                 for j in range(len(traces[i])):
-                    all_traces[i].append([[] for k in range(n_patts[i])])
+                    #all_traces[i].append([[] for k in range(n_patts[i])])
+                    all_traces[i].append([])
 
             for j in range(len(traces[i])):
-                for k in range(n_patts[i]):
-                    all_traces[i][j][k].extend(traces[i][j][k])
+                # for k in range(n_patts[i]):
+                all_traces[i][j].extend(traces[i][j])
         #
         # print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t1 (traces per 2nd patt)={}, t2={}, t3={},t00={} t01={} t10={}, t000={}, t100={}, t0000={}, t0001={}'.format(x.size(),
         #                                                                                                 len(traces),
@@ -500,23 +501,23 @@ def main_visualize(args, dataset_file, top_k):
             for j in range(len(same_length_traces)):
                 print("\nSublength {}\n".format(j+1))
                 # print(len(same_length_traces), len(same_length_traces[0]))
-                patt_traces = same_length_traces[j][k]
-                assert (len(patt_traces) == len(all_x)),  str(len(patt_traces))+' != '+str(len(all_x))
-                f = lambda pair: pair[0].score
+                patt_traces = same_length_traces[j]
+                #assert (len(patt_traces) == len(all_x)),  str(len(patt_traces))+' != '+str(len(all_x))
+                f = lambda pair: pair[0].score[k]
 
                 # print(f(a[0]), a[0].score)
                 # print(a)
                 local_top_traces = sorted(zip(patt_traces, all_x), key=f, reverse=True)[:top_k]
 
-                print_top_traces(local_top_traces, j+1)
+                print_top_traces(local_top_traces, k, j+1)
 
 
     sys.stdout.flush()
 
 
-def print_top_traces(top_traces, tmp_patt_len=None):
+def print_top_traces(top_traces, k, tmp_patt_len=None):
     for (i, pair) in enumerate(top_traces):
-        pair[0].print(i+1, pair[1], tmp_patt_len)
+        pair[0].print(i+1, pair[1], k, tmp_patt_len)
 
 # def update_trace(patt_trace, doc_id, patt_id, doc, trace_elements):
 #     d = TraceElement(doc)

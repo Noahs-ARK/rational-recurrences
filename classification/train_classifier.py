@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from termcolor import colored
+
 
 from tensorboardX import SummaryWriter
 
@@ -413,9 +415,6 @@ def main_visualize(args, dataset_file, top_k):
     model.load_state_dict(state_dict)
 
     if args.gpu:
-        model.to_cuda(model)
-
-    if args.gpu:
         model.cuda()
 
     #top_samples = torch.zeros(len(traces[0][0])), )
@@ -429,6 +428,7 @@ def main_visualize(args, dataset_file, top_k):
     n_patts = [n_patts[i] for i in range(len(n_patts)) if n_patts[i] > 0 ]
 
     # Trace for each pattern in each pattern length
+    all_scores = [[] for i in n_patts]
     all_traces = [[] for i in n_patts]
 
     all_x = []
@@ -438,104 +438,92 @@ def main_visualize(args, dataset_file, top_k):
         # print(len(x[0]), len(txt_x))
         assert(len(x[0]) == len(txt_x))
 
-        # print(x[-5][-5], x[-4][-5], x[-3][-5], x[-2][-5], x[-1][-5], txt_x[-5][-5:], txt_x[-4][-5:], txt_x[-3][-5:], txt_x[-2][-5:], txt_x[-1][-5:])
-        # sys.exit(1)
         x = Variable(x)
         if args.gpu:
             x = x.cuda()
         x = (x)
 
-        # traces1: n-patterns lengths, traces2: n_instances, traces3: n_patterns per pattern length
+        # traces shape: n-patterns lengths X length of pattern (for intermediate pattern score)
+        # each item in this matrix is a TraceElementParallel representing the traces of a batch of documents
+        # and all patterns of the given pattern length.
         traces = model.visualize(x)
 
-        # print(len(traces), len(traces[0]), len(traces[0][0]))
-
+        # Saving all scores and all indices of main path (u_indices)
         for i in range(len(n_patts)):
             if len(all_traces[i]) == 0:
                 for j in range(len(traces[i])):
-                    #all_traces[i].append([[] for k in range(n_patts[i])])
-                    all_traces[i].append([])
-
-            for j in range(len(traces[i])):
-                # for k in range(n_patts[i]):
-                all_traces[i][j].extend(traces[i][j])
-        #
-        # print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t1 (traces per 2nd patt)={}, t2={}, t3={},t00={} t01={} t10={}, t000={}, t100={}, t0000={}, t0001={}'.format(x.size(),
-        #                                                                                                 len(traces),
-        #                                                                                                 len(traces[0]),
-        #                                                                                                 len(traces[1]),
-        #                                                                                                 len(traces[2]),
-        #                                                                                                 len(traces[3])
-                                                                                                        # len(traces[0][0]),
-                                                                                                        # len(traces[0][1]),
-                                                                                                        # len(traces[1][0]),
-                                                                                                        # len(traces[0][0][0]),
-                                                                                                        # len(traces[1][0][0]),
-                                                                                                        # len(traces[0][0][0][0]),
-                                                                                                        # len(traces[1][0][0][0])
-                                                                                                        # ))
-
-        # print('x={} and t (n-pattern length)={}, t0 (traces per 1st patt)={}, t00={}'.format(
-        #     x.size(), len(traces), len(traces[0]), len(traces[0][0])))
-
-    #     # print(x.size(), x[0].size())
-    #     for (i, same_length_traces) in enumerate(traces):
-    #         # print(i)
-    #         for j in range(n_patts[i]):
-    #             # print("\t", j)
-    #             for (doc_id, doc) in enumerate(txt_x):
-    #                 # print("\t\t", doc_id)
-    #                 update_trace(same_length_traces, doc_id, j, doc, top_traces[i][j])
-    #
-    # sys.exit(-1)
-
-    # print(len(all_traces), len(all_traces[0]), len(all_traces[0][0]))
-    # print(len(all_traces), len(all_traces[1]), len(all_traces[1][0]))
+                    all_scores[i].append(traces[i][j].score)
+                    all_traces[i].append(traces[i][j].u_indices)
+            else:
+                for j in range(len(traces[i])):
+                    all_scores[i][j] = np.concatenate((all_scores[i][j], traces[i][j].score))
+                    all_traces[i][j] = np.concatenate((all_traces[i][j], traces[i][j].u_indices))
 
     # loop one: pattern length
     for (i, same_length_traces) in enumerate(all_traces):
         print("\nPattern length {}".format(patt_lengths[i]))
-        # Loop two: number of patterns of each length
+
+        # loop two: number of patterns of each length
         for k in range(n_patts[i]):
             print("\nPattern index {}\n".format(k))
+
+            # Loop three: top phrases of intermediate states for each pattern
             for j in range(len(same_length_traces)):
-                print("\nSublength {}\n".format(j+1))
-                # print(len(same_length_traces), len(same_length_traces[0]))
+                print("\nSublength {}\n".format(j))
+
                 patt_traces = same_length_traces[j]
-                #assert (len(patt_traces) == len(all_x)),  str(len(patt_traces))+' != '+str(len(all_x))
-                f = lambda pair: pair[0].score[k]
 
-                # print(f(a[0]), a[0].score)
-                # print(a)
-                local_top_traces = sorted(zip(patt_traces, all_x), key=f, reverse=True)[:top_k]
+                local_scores = all_scores[i][j][:, k]
+                local_traces = patt_traces[:, k, :]
 
-                print_top_traces(local_top_traces, k, j+1)
+                # Sorting scores, traces and documents by the score.
+                local_top_traces = sorted(zip(local_scores, local_traces, all_x),
+                                          key=lambda pair: pair[0], reverse=True)[:top_k]
+
+                print_top_traces(local_top_traces, j+1)
 
 
     sys.stdout.flush()
 
 
-def print_top_traces(top_traces, k, tmp_patt_len=None):
-    for (i, pair) in enumerate(top_traces):
-        pair[0].print(i+1, pair[1], k, tmp_patt_len)
+# Print the top phrases for a given pattern
+# top_traces: triplets containing the scores, traces and documents for the top k matches
+# tmp_patt_len: the pattern length to print (if tracing only the first tokens of the pattern)
+def print_top_traces(top_traces, tmp_patt_len=None):
+    # A helper function: print a given phrase.
+    # Calls recursive function (print_rec) that prints a given state and all it self loops.
+    def print_traces(index, score, u_indices, doc, tmp_patt_len=None):
+        if tmp_patt_len is None:
+            tmp_patt_len = len(u_indices)
 
-# def update_trace(patt_trace, doc_id, patt_id, doc, trace_elements):
-#     d = TraceElement(doc)
-#
-#     start_index =  0
-#
-#     while doc[start_index] == '<pad>':
-#         start_index += 1
-#
-#     local_trace = [ patt_trace[x][doc_id][patt_id] for x in range(len(patt_trace))]
-#
-#     print(len(local_trace), patt_trace[0][doc_id][patt_id].numpy(), len(doc), start_index)
-#     d.score = torch.FloatTensor(1).random_(0, 100)
-#
-#     d.u_indices = torch.LongTensor(int(len(patt_trace)/2)).random_(0, len(doc)).sort()[0]
-#
-#     # print("Adding d={}, u={}, done".format(d.score, d.u_indices))
-#     trace_elements.append(d)
+        print("{}. {}.".format(index, u_indices[:tmp_patt_len]), end=' ')
+        print_rec(doc, 0, u_indices, tmp_patt_len)
+        print(float(score))
+
+    # Print words from one state
+    def print_rec(doc, u_index, u_indices, tmp_patt_len):
+        doc_index = u_indices[u_index]
+        print(colored(doc[doc_index], 'red'), end='_MP ')
+
+        u_index += 1
+
+        if u_index == tmp_patt_len:
+            return
+
+        doc_index += 1
+
+        while (doc_index < u_indices[u_index]):
+            print(doc[doc_index], end='_SL ')
+            doc_index += 1
+
+        print_rec(doc, u_index, u_indices, tmp_patt_len)
+
+    # each triplet is composed of [0] the pattern score
+    # [1] the pattern traces (i.e., the indices of the main paths in the given document)
+    # [2] the document itself
+    for (i, triplet) in enumerate(top_traces):
+        print_traces(i+1, triplet[0], triplet[1], triplet[2], tmp_patt_len)
+
 
 def main_test(args):
     model, datasets, labels, emb_layer = main_init(args)
@@ -562,9 +550,6 @@ def main_test(args):
         state_dict = torch.load(args.input_model, map_location=lambda storage, loc: storage)
 
     model.load_state_dict(state_dict)
-
-    if args.gpu:
-        model.to_cuda(model)
 
     if args.gpu:
         model.cuda()

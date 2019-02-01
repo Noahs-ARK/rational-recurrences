@@ -30,7 +30,7 @@ def main(argv):
                                 clip_grad = argv.clip, dropout = argv.dropout, rnn_dropout = argv.rnn_dropout,
                                 embed_dropout = argv.embed_dropout, gpu=argv.gpu,
                                 max_epoch = argv.max_epoch, patience = argv.patience,
-                                batch_size = argv.batch_size,
+                                batch_size = argv.batch_size, use_last_cs=argv.use_last_cs,
                                 lr = argv.lr, weight_decay = argv.weight_decay, depth = argv.depth, logging_dir = argv.logging_dir,
                                 base_data_dir = argv.base_dir, output_dir = argv.model_save_dir)
         cur_valid_err = train_classifier.main(args)

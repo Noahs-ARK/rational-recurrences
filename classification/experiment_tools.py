@@ -25,6 +25,7 @@ def general_arg_parser():
     p.add_argument('--depth', help="Depth of network", type=int, default=1)
     p.add_argument("-s", "--seed", help="Random seed", type=int, default=1234)
     p.add_argument("-b", "--batch_size", help="Batch size", type=int, default=64)
+    p.add_argument("--use_last_cs", help="Only use last hidden state as output value", action='store_true')
 
     # p.add_argument("--max_doc_len",
     #                help="Maximum doc length. For longer documents, spans of length max_doc_len will be randomly "

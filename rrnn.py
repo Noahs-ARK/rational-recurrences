@@ -3,101 +3,58 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.autograd import Variable
-from termcolor import colored
 
-
+NEG_INF = -10000000
 
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
-    class TraceElement():
-        def __init__(self, f, u, prev_traces, i, t, pattern_index, sample_index):
-            self.u_indices = np.zeros((int(k / 2)), dtype=int)
+    # Compute traces for n_patterns patterns and n_docs documents
+    class TraceElementParallel():
+        def __init__(self, f, u, prev_traces, i, t, n_patterns, n_docs):
+            self.u_indices = np.zeros((n_docs, n_patterns, int(k / 2)), dtype=int)
 
+            # Lower triangle in dynamic programming table is impossible (i.e., -inf)
             if t < i:
-                self.score = float('-inf')
+                self.score = NEG_INF*np.ones((n_docs, n_patterns))
                 return
 
             # Previous trace values
-            prev_u = prev_traces[i-1][pattern_index][sample_index] if i > 0 else None
+            u_score = np.copy(u.data.numpy())
+            f_score = np.copy(f.data.numpy())
 
-            # print("in te, t={}, i={}. all prevs is : {}".format(t, i, [x is None for x in prev_traces]))
-
-            # if u[y][x].data.numpy() > 0 or f[y][x].data.numpy() > 0:
-            #     print("before: ", x, y, u[y][x].data.numpy(), f[y][x].data.numpy(), is_u[y][x].data.numpy(), i, t,
-            #           prev_traces[i][y][x].u_indices if is_u[y][x].data.numpy() and prev_traces[i] is not None else None,
-            #           prev_traces[i+1][y][x].u_indices if not is_u[y][x].data.numpy() and prev_traces[i+1] is not None else None,
-            #           self.u_indices)
-
-            # Two candidates: u (read token) and f (forget token)
-            u_score = u[sample_index][pattern_index].data.numpy()
-
-            if prev_u is not None:
-                u_score *= prev_u.score
-
-            prev_f = prev_traces[i][pattern_index][sample_index] if t > i else None
-            f_score = f[sample_index][pattern_index].data.numpy()
-
-            if prev_f is not None:
-                f_score *= prev_f.score
+            # If i > 0, including history in computation of u_score and u_indices
+            if i > 0:
+                prev_u_indices = prev_traces[i-1].u_indices
+                u_score *= prev_traces[i-1].score
             else:
-                f_score = float('-inf')
+                prev_u_indices = np.zeros((n_docs, n_patterns, int(k / 2)), dtype=int)
 
-
-            # print("in te, doc_ind={}, patt_ind={}, t={}, i={}. u_score={}, f_score={} (u>v={}), all prevs is : {}".format(sample_index, pattern_index, t, i,
-            #         u_score, f_score, u_score >= f_score, [x is None for x in prev_traces]))
-
-            if u_score >= f_score:
-                self.score = u_score
-                if prev_u is not None:
-                    # self.score *= prev1.score
-                    self.u_indices = prev_u.u_indices
-                # else:
-                #     assert i == 0
-                self.u_indices[i] = t
+            # If t == i, we can't take a forget gate.
+            if t == i:
+                prev_f_indices = np.zeros((n_docs, n_patterns, int(k / 2)), dtype=int)
+                f_score = NEG_INF * np.ones((n_docs, n_patterns))
+            # Otherwise, including history of forget gate.
             else:
-                self.score = f_score
-                if prev_f is not None:
-                    self.u_indices = prev_f.u_indices
-                    # self.score *= prev2.score
-                    # else:
-                    #     assert i == 0
+                prev_f_indices = prev_traces[i].u_indices
+                f_score *= prev_traces[i].score
 
-            # if u[y][x].data.numpy() > 0 or f[y][x].data.numpy() > 0:
-            #     print("after", self.u_indices)
+            assert((not np.isnan(u_score).any()) and (not np.isnan(f_score).any()))
 
-        def print(self, index, doc):
-            print("{}. {}.".format(index, self.u_indices), end=' ')
-            self.print_rec(doc, 0)
-            print(float(self.score))
+            # Dynamic program selection
+            selected = u_score >= f_score
+            not_selected = 1 - selected
 
-        def print_rec(self, doc, u_index):
-            doc_index = self.u_indices[u_index]
-            print(colored(doc[doc_index], 'red'), end='_MP ')
+            # Equivalent to np.maximum(u_score, f_score)
+            self.score = selected * u_score + not_selected * f_score
 
-            u_index += 1
+            # A fancy way of selecting the previous indices based on the selection criterion above.
+            prevs = np.expand_dims(selected, 2) * prev_u_indices + \
+                    np.expand_dims(not_selected, 2) * prev_f_indices
 
-            if u_index == len(self.u_indices):
-                return
+            # Updating u_indices with history (deep copy!)
+            self.u_indices[:, :, :i+1] = np.copy(prevs[:, :, :i+1])
 
-            doc_index += 1
-
-            while (doc_index < self.u_indices[u_index]):
-                print(doc[doc_index], end='_SL ')
-                doc_index += 1
-
-            self.print_rec(doc, u_index)
-
-    def get_trace(f, u, prev_traces, i, t):
-        traces = [
-            [
-                TraceElement(f, u, prev_traces,
-                             i, t, pattern_index, sample_index)
-                for sample_index in range(u.size()[0])
-            ]
-            for pattern_index in range(u.size()[1])
-        ]
-
-        return traces
-
+            # In the cases where u was selected, updating u_indices with current time step.
+            self.u_indices[selected, i] = t
 
 
     def rrnn_compute_cpu(u, cs_init=None, eps=None, keep_trace=False):
@@ -116,12 +73,15 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
         for i in range(int(k/2), k):
             forgets.append(u[..., i])
 
-        cs_final = [[] for i in range(int(k/2))]
+        cs_final = None
+        css = None
+        all_traces = None
 
-        css = [Variable(u.data.new(length, batch, bidir, d)) for i in range(int(k/2))]
+        if not keep_trace:
+            cs_final = [[] for i in range(int(k/2))]
 
-        traces = None
-        prev_traces = None
+            css = [Variable(u.data.new(length, batch, bidir, d)) for i in range(int(k/2))]
+
 
         for di in range(bidir):
             if di == 0:
@@ -129,68 +89,54 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             else:
                 time_seq = range(length - 1, -1, -1)
 
-            cs_prev = [cs_init[i][:, di, :] for i in range(len(cs_init))]
-
             if keep_trace:
                 prev_traces = [None for i in range(len(cs_init))]
+            else:
+                cs_prev = [cs_init[i][:, di, :] for i in range(len(cs_init))]
 
+            # input
             for t in time_seq:
-                cs_t = []
                 # ind = 0
                 if keep_trace:
+                    # Traces of all pattern states in current time step
                     all_traces = []
+                else:
+                    cs_t = []
 
-                for i in range(len(cs_prev)):
-                    first_term = cs_prev[i] * forgets[i][t, :, di, :]
-                    second_term = us[i][t, :, di, :]
-
-                    if i > 0:
-                        second_term = second_term * cs_prev[i-1]
-
-                    cs_t.append(first_term + second_term)
-
-                    # print(second_term.size(),forgets[i][t, :, di, :].size(),traces[ind+1].size())
+                # States of pattern
+                for i in range(len(cs_init)):
                     if keep_trace:
-                        traces = get_trace(forgets[i][t, :, di, :], us[i][t, :, di, :], prev_traces, i, t)
-                        all_traces.append(traces)
-                        # traces[ind,t] = second_term.data
-                        # ind += 1
-                        #
-                        # if (t == 0):
-                        #     prev = 1
-                        # else:
-                        #     prev = traces[ind, t - 1]
-                        #     print("ps=",prev.size())
-                        #
-                        # traces[ind, t] = forgets[i][t, :, di, :].data
-                        #
-                        # print("fs=",forgets[i][t, :, di, :].data.size(), "ts=", traces[ind, t].size())
-                        # traces[ind, t] *= prev
-                        # # val = prev * forgets[i][t, :, di, :].data
-                        # print("ts2=", traces[ind, t].size())
-                        #
-                        # # traces[ind, t] = forgets[i][t, :, di, :].data
-                        #
-                        # ind += 1
+                        all_traces.append(
+                            TraceElementParallel(forgets[i][t, :, di, :], us[i][t, :, di, :], prev_traces, i, t,
+                                                 us[i].size()[3], u.size()[1])
+                        )
+                    else:
+                        first_term = cs_prev[i] * forgets[i][t, :, di, :]
+                        second_term = us[i][t, :, di, :]
+
+                        if i > 0:
+                            second_term = second_term * cs_prev[i-1]
+
+                        cs_t.append(first_term + second_term)
+
 
                 if keep_trace:
                     prev_traces = all_traces
-
-                cs_prev = cs_t
+                else:
+                    cs_prev = cs_t
                 
+                    for i in range(len(cs_prev)):
+                        css[i][t,:,di,:] = cs_t[i]
+
+            if not keep_trace:
                 for i in range(len(cs_prev)):
-                    css[i][t,:,di,:] = cs_t[i]
+                    cs_final[i].append(cs_t[i])
 
-            for i in range(len(cs_prev)):
-                cs_final[i].append(cs_t[i])
+        if not keep_trace:
+            for i in range(len(cs_final)):
+                cs_final[i] = torch.stack(cs_final[i], dim=1).view(batch, -1)
 
-        # if keep_trace:
-        #     print("t0=", len(traces), len(traces[0]),)
-
-        for i in range(len(cs_final)):
-            cs_final[i] = torch.stack(cs_final[i], dim=1).view(batch, -1)
-        
-        return css, cs_final, traces
+        return css, cs_final, all_traces
     if semiring.type == 0:
         # plus times
         return rrnn_compute_cpu
@@ -741,7 +687,8 @@ class RRNNCell(nn.Module):
             RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
             css, cs_final, traces  = RRNN_Compute(u, cs_init, eps=None, keep_trace=keep_trace)
 
-
+        if keep_trace:
+            return None, None, traces
 
         # instead of using \rho to weight the sum, we can give uniform weight. this might be
         # more interpretable, as the \rhos might counteract the regularization terms
@@ -849,16 +796,25 @@ class RRNNLayer(nn.Module):
             
     def forward(self, input, init_hidden=None, keep_trace=False):
         #import pdb; pdb.set_trace()
-        all_traces = []
+
         gcs, cs_final, traces = self.cells[0](input, init_hidden, keep_trace)
-        all_traces.append(traces)
+
+        if keep_trace:
+            # An array where each element is the traces for all the patterns of one pattern length.
+            all_traces = []
+
+            all_traces.append(traces)
+
         for i, cell in enumerate(self.cells):
             if i == 0:
                 continue
             else:
                 gcs_cur, _, traces = cell(input, init_hidden, keep_trace)
-                all_traces.append(traces)
-                gcs = torch.cat((gcs, gcs_cur), 2)
+
+                if keep_trace:
+                    all_traces.append(traces)
+                else:
+                    gcs = torch.cat((gcs, gcs_cur), 2)
                 #for j in range(len(cs_final)):
                 #    cs_final[j] = torch.cat((cs_final[j], cs_final_cur[j]), 1)
                 #cs_final = torch.cat(cs_final, cs_final_cur)
@@ -1010,6 +966,7 @@ class RRNN(nn.Module):
         first_traces = None
         for i, rnn in enumerate(self.rnn_lst):
             h, cs, traces = rnn(prevx, init_hidden[i], keep_trace)
+            # Only visualize first layer
             if i == 0 and keep_trace:
                 first_traces = traces
 

@@ -4,17 +4,28 @@ import torch.nn as nn
 import numpy as np
 from torch.autograd import Variable
 
-NEG_INF = -10000000
+class Max():
+    zero = -10000000
+
+    def select(x, y):
+        return x >= y
+
+class Min():
+    zero = 10000000
+
+    def select(x, y):
+        return x <= y
 
 def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
+
     # Compute traces for n_patterns patterns and n_docs documents
     class TraceElementParallel():
-        def __init__(self, f, u, prev_traces, i, t, n_patterns, n_docs):
+        def __init__(self, min_max, f, u, prev_traces, i, t, n_patterns, n_docs):
             self.u_indices = np.zeros((n_docs, n_patterns, int(k / 2)), dtype=int)
 
             # Lower triangle in dynamic programming table is impossible (i.e., -inf)
             if t < i:
-                self.score = NEG_INF*np.ones((n_docs, n_patterns))
+                self.score = min_max.zero*np.ones((n_docs, n_patterns))
                 return
 
             # Previous trace values
@@ -31,7 +42,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             # If t == i, we can't take a forget gate.
             if t == i:
                 prev_f_indices = np.zeros((n_docs, n_patterns, int(k / 2)), dtype=int)
-                f_score = NEG_INF * np.ones((n_docs, n_patterns))
+                f_score = min_max.zero * np.ones((n_docs, n_patterns))
             # Otherwise, including history of forget gate.
             else:
                 prev_f_indices = prev_traces[i].u_indices
@@ -40,10 +51,10 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             assert((not np.isnan(u_score).any()) and (not np.isnan(f_score).any()))
 
             # Dynamic program selection
-            selected = u_score >= f_score
+            selected = min_max.select(u_score, f_score)
             not_selected = 1 - selected
 
-            # Equivalent to np.maximum(u_score, f_score)
+            # Equivalent to np.maximum(u_score, f_score) (or minimum)
             self.score = selected * u_score + not_selected * f_score
 
             # A fancy way of selecting the previous indices based on the selection criterion above.
@@ -57,7 +68,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
             self.u_indices[selected, i] = t
 
 
-    def rrnn_compute_cpu(u, cs_init=None, eps=None, keep_trace=False):
+    def rrnn_compute_cpu(u, cs_init=None, eps=None, keep_trace=False, min_max=Max):
         assert eps is None, "haven't implemented epsilon steps with arbitrary n-grams. Please set command line param to False."
         bidir = 2 if bidirectional else 1
         assert u.size(-1) == k
@@ -107,7 +118,7 @@ def RRNN_Ngram_Compute_CPU(d, k, semiring, bidirectional=False):
                 for i in range(len(cs_init)):
                     if keep_trace:
                         all_traces.append(
-                            TraceElementParallel(forgets[i][t, :, di, :], us[i][t, :, di, :], prev_traces, i, t,
+                            TraceElementParallel(min_max, forgets[i][t, :, di, :], us[i][t, :, di, :], prev_traces, i, t,
                                                  us[i].size()[3], u.size()[1])
                         )
                     else:
@@ -609,7 +620,7 @@ class RRNNCell(nn.Module):
 
         return gcs.view(length, batch, -1), c_final
 
-    def real_ngram_forward(self, input, init_hidden=None, keep_trace=False):
+    def real_ngram_forward(self, input, init_hidden=None, keep_trace=False, min_max=Max):
         assert input.dim() == 3
         n_in, n_out = self.n_in, self.n_out
         length, batch = input.size(0), input.size(-2)
@@ -685,7 +696,7 @@ class RRNNCell(nn.Module):
                 assert False, "custom cuda kernel only implemented for 1,2,3,4-gram models"                
         else:
             RRNN_Compute = RRNN_Ngram_Compute_CPU(n_out, self.k, self.semiring, self.bidirectional)
-            css, cs_final, traces  = RRNN_Compute(u, cs_init, eps=None, keep_trace=keep_trace)
+            css, cs_final, traces  = RRNN_Compute(u, cs_init, eps=None, keep_trace=keep_trace, min_max=min_max)
 
         if keep_trace:
             return None, None, traces
@@ -718,7 +729,7 @@ class RRNNCell(nn.Module):
         return gcs.view(length, batch, -1), cs_final, traces
 
     
-    def forward(self, input, init_hidden=None, keep_trace=False):
+    def forward(self, input, init_hidden=None, keep_trace=False, min_max=Max):
 
         if self.semiring.type == 0:
             # plus times
@@ -728,7 +739,7 @@ class RRNNCell(nn.Module):
                 return self.real_unigram_forward(input=input, init_hidden=init_hidden)
             else:
                 # it should be of the form "4-gram"
-                return self.real_ngram_forward(input=input, init_hidden=init_hidden, keep_trace=keep_trace)
+                return self.real_ngram_forward(input=input, init_hidden=init_hidden, keep_trace=keep_trace, min_max=min_max)
                 
         else:
             assert False, "not implemented yet."
@@ -794,10 +805,10 @@ class RRNNLayer(nn.Module):
         for cell in self.cells:
             cell.init_weights()
             
-    def forward(self, input, init_hidden=None, keep_trace=False):
+    def forward(self, input, init_hidden=None, keep_trace=False, min_max=Max):
         #import pdb; pdb.set_trace()
 
-        gcs, cs_final, traces = self.cells[0](input, init_hidden, keep_trace)
+        gcs, cs_final, traces = self.cells[0](input, init_hidden, keep_trace, min_max=min_max)
 
         if keep_trace:
             # An array where each element is the traces for all the patterns of one pattern length.
@@ -809,7 +820,7 @@ class RRNNLayer(nn.Module):
             if i == 0:
                 continue
             else:
-                gcs_cur, _, traces = cell(input, init_hidden, keep_trace)
+                gcs_cur, _, traces = cell(input, init_hidden, keep_trace, min_max=min_max)
 
                 if keep_trace:
                     all_traces.append(traces)
@@ -944,7 +955,7 @@ class RRNN(nn.Module):
 
 
 
-    def ngram_forward(self, input, init_hidden=None, return_hidden=True, keep_trace=False):
+    def ngram_forward(self, input, init_hidden=None, return_hidden=True, keep_trace=False, min_max=Max):
         assert input.dim() == 3  # (len, batch, n_in)
         if init_hidden is None:
             init_hidden = [None for _ in range(self.num_layers)]
@@ -965,7 +976,7 @@ class RRNN(nn.Module):
 
         first_traces = None
         for i, rnn in enumerate(self.rnn_lst):
-            h, cs, traces = rnn(prevx, init_hidden[i], keep_trace)
+            h, cs, traces = rnn(prevx, init_hidden[i], keep_trace, min_max=min_max)
             # Only visualize first layer
             if i == 0 and keep_trace:
                 first_traces = traces
@@ -982,7 +993,7 @@ class RRNN(nn.Module):
         else:
             return prevx
                       
-    def forward(self, input, init_hidden=None, return_hidden=True, keep_trace=False):
+    def forward(self, input, init_hidden=None, return_hidden=True, keep_trace=False, min_max=Max):
         if self.pattern == "unigram":
             return self.unigram_forward(input, init_hidden, return_hidden)
         elif self.pattern == "bigram":
@@ -990,7 +1001,7 @@ class RRNN(nn.Module):
         else:
             # it should be of the form "4-gram"
             #ngram = int(self.pattern.split("-")[0])
-            return self.ngram_forward(input, init_hidden, return_hidden, keep_trace=keep_trace)
+            return self.ngram_forward(input, init_hidden, return_hidden, keep_trace=keep_trace, min_max=min_max)
 
 
 class LayerNorm(nn.Module):

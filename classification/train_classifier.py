@@ -388,7 +388,22 @@ def train_model(epoch, model, optimizer,
     return best_valid, unchanged, stop
 
 
-def main_visualize(args, dataset_file, top_k):
+def read_norms_file(norms_file):
+    norms = np.loadtxt(norms_file)
+
+    vals = -1 * np.ones(norms.shape[0])
+
+    for i in range(norms.shape[0]):
+        if norms[i, 0] > 0.1:
+            vals[i] = norms.shape[1] - 1
+            for j in range(1, norms.shape[1]):
+                if norms[i, j]*10 < np.max(norms[i, j-1], 1):
+                    vals[i] = j - 1
+                    break
+
+    return vals
+
+def main_visualize(args, dataset_file, top_k, norms_file=None):
     # datasets and labels are 3-size array: 0 - train, 1 - dev, 2 - test
     model, datasets, labels, emb_layer = main_init(args)
 
@@ -416,6 +431,9 @@ def main_visualize(args, dataset_file, top_k):
 
     if args.gpu:
         model.cuda()
+
+
+    norms = None if norms_file is None else read_norms_file(norms_file)
 
     #top_samples = torch.zeros(len(traces[0][0])), )
 
@@ -465,10 +483,16 @@ def main_visualize(args, dataset_file, top_k):
 
         # loop two: number of patterns of each length
         for k in range(n_patts[i]):
+            if norms is not None and norms[k] == -1:
+                continue
+
             print("\nPattern index {}\n".format(k))
 
             # Loop three: top phrases of intermediate states for each pattern
             for j in range(len(same_length_traces)):
+                if norms is not None and norms[k] == (j - 2):
+                    break
+
                 print("\nSublength {}\n".format(j))
 
                 patt_traces = same_length_traces[j]

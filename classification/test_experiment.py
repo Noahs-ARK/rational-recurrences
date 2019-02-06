@@ -18,7 +18,8 @@ def main(argv):
                                 base_data_dir = argv.base_dir, input_model=argv.input_model)
 
     if argv.visualize > 0:
-        train_classifier.main_visualize(args, os.path.join(argv.base_dir,argv.dataset), argv.visualize)
+        train_classifier.main_visualize(args, os.path.join(argv.base_dir,argv.dataset), argv.visualize,
+                                        argv.norms_file)
     else:
         _,_,_ = train_classifier.main_test(args)
 
@@ -32,4 +33,6 @@ if __name__ == '__main__':
                             parents=[experiment_tools.general_arg_parser()])
     parser.add_argument("-m", "--input_model", help="Saved model file", required=True, type=str)
     parser.add_argument("-v", "--visualize", help="Visualize (rather than test): top_k phrases to visualize", type=int, default=0)
+    parser.add_argument("--norms_file", help="In visualization mode: file with norms, from which to select patterns and pattern states.", type=str)
+
     sys.exit(main(parser.parse_args()))

@@ -112,12 +112,12 @@ class Model(nn.Module):
         return self.out(feat)
 
     # Assume rrnn model
-    def visualize(self, input):
+    def visualize(self, input, min_max=rrnn.Max):
         assert self.args.model == "rrnn"
         input_fwd = input
         emb_fwd = self.emb_layer(input_fwd)
 #        emb_fwd = self.drop(emb_fwd)
-        _, _, traces = self.encoder(emb_fwd, None, True, True)
+        _, _, traces = self.encoder(emb_fwd, None, True, True, min_max)
 
         return traces
 
@@ -448,6 +448,8 @@ def main_visualize(args, dataset_file, top_k, norms_file=None):
     # Trace for each pattern in each pattern length
     all_scores = [[] for i in n_patts]
     all_traces = [[] for i in n_patts]
+    all_scores_min = [[] for i in n_patts]
+    all_traces_min = [[] for i in n_patts]
 
     all_x = []
 
@@ -464,7 +466,8 @@ def main_visualize(args, dataset_file, top_k, norms_file=None):
         # traces shape: n-patterns lengths X length of pattern (for intermediate pattern score)
         # each item in this matrix is a TraceElementParallel representing the traces of a batch of documents
         # and all patterns of the given pattern length.
-        traces = model.visualize(x)
+        traces = model.visualize(x, rrnn.Max)
+        traces_min = model.visualize(x, rrnn.Min)
 
         # Saving all scores and all indices of main path (u_indices)
         for i in range(len(n_patts)):
@@ -472,10 +475,14 @@ def main_visualize(args, dataset_file, top_k, norms_file=None):
                 for j in range(len(traces[i])):
                     all_scores[i].append(traces[i][j].score)
                     all_traces[i].append(traces[i][j].u_indices)
+                    all_scores_min[i].append(traces_min[i][j].score)
+                    all_traces_min[i].append(traces_min[i][j].u_indices)
             else:
                 for j in range(len(traces[i])):
                     all_scores[i][j] = np.concatenate((all_scores[i][j], traces[i][j].score))
                     all_traces[i][j] = np.concatenate((all_traces[i][j], traces[i][j].u_indices))
+                    all_scores_min[i][j] = np.concatenate((all_scores_min[i][j], traces_min[i][j].score))
+                    all_traces_min[i][j] = np.concatenate((all_traces_min[i][j], traces_min[i][j].u_indices))
 
     # loop one: pattern length
     for (i, same_length_traces) in enumerate(all_traces):
@@ -496,15 +503,26 @@ def main_visualize(args, dataset_file, top_k, norms_file=None):
                 print("\nSublength {}\n".format(j))
 
                 patt_traces = same_length_traces[j]
+                patt_traces_min = all_traces_min[i][j]
 
                 local_scores = all_scores[i][j][:, k]
                 local_traces = patt_traces[:, k, :]
+                local_scores_min = all_scores_min[i][j][:, k]
+                local_traces_min = patt_traces_min[:, k, :]
 
                 # Sorting scores, traces and documents by the score.
-                local_top_traces = sorted(zip(local_scores, local_traces, all_x),
-                                          key=lambda pair: pair[0], reverse=True)[:top_k]
+                sorted_traces = sorted(zip(local_scores, local_traces, all_x),
+                                          key=lambda pair: pair[0], reverse=True)
+                sorted_traces_min = sorted(zip(local_scores_min, local_traces_min, all_x),
+                                          key=lambda pair: pair[0], reverse=False)
 
+                local_top_traces = sorted_traces[:top_k]
+                local_worst_traces = sorted_traces_min[:top_k]
+
+                print("Best:")
                 print_top_traces(local_top_traces, j+1)
+                print("Worst:")
+                print_top_traces(local_worst_traces, j+1)
 
 
     sys.stdout.flush()

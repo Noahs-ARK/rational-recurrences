@@ -115,7 +115,7 @@ extern "C" {
             *(gup+2) = gforget1;
             cur_c1 += gprev_c1; 
             
-            float op2 = times_forward(semiring_type, cur_c2, forget2);
+            float op2 = times_forward(semiring_type, prev_c2, forget2);
             float op3_ = plus_forward(semiring_type, eps_val, prev_c1);
             float op3 =  times_forward(semiring_type, op3_, u2);
             float gop2 = 0.f, gop3 = 0.f;

@@ -3,6 +3,7 @@ import time
 import math
 import sys
 import numpy as np
+import torch as t
 import torch.nn as nn
 from torch.optim import SGD
 from torch.autograd import Variable
@@ -335,6 +336,7 @@ def eval_model(model, valid):
     criterion = nn.CrossEntropyLoss(size_average=False)
     hidden = model.init_hidden(1)
     N = (len(valid[0])-1)//unroll_size + 1
+    
     for i in range(N):
         x = valid[0][i*unroll_size:(i+1)*unroll_size]
         y = valid[1][i*unroll_size:(i+1)*unroll_size].view(-1)

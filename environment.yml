@@ -1,0 +1,8 @@
+name: rational-recurrences
+channels:
+  - conda-forge
+  - anaconda-platform
+dependencies:
+  - python==3.6.4
+  - mypy==0.670
+  - torchvision
